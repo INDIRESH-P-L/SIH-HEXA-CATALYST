@@ -7,7 +7,8 @@ Target: **4–4.5 minutes**. Rehearse it twice, once with the network disconnect
 ## Before you start
 
 ```bash
-docker compose up -d db                       # wait for healthy
+# Start PostgreSQL (or use Supabase cloud DB in backend/.env)
+./scripts/start_local_db.sh
 cd mock-catalogue && uvicorn main:app --port 8001
 cd backend && uvicorn app.main:app --reload
 cd frontend && npm run dev
