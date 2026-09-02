@@ -2,12 +2,8 @@ import { useState } from 'react'
 
 import { LandingNavbar } from '../components/landing/LandingNavbar'
 import { HeroSection } from '../components/landing/HeroSection'
-import { StatsRibbon } from '../components/landing/StatsRibbon'
-import { DashboardPanels } from '../components/landing/DashboardPanels'
-import { ShowcasedCourses } from '../components/landing/ShowcasedCourses'
-import { AmritGyaanKosh } from '../components/landing/AmritGyaanKosh'
-import { VideoGallery } from '../components/landing/VideoGallery'
-import { KarmayogiHubs } from '../components/landing/KarmayogiHubs'
+import { FeaturesGrid } from '../components/landing/FeaturesGrid'
+import { WorkflowSection } from '../components/landing/WorkflowSection'
 import { LandingFooter } from '../components/landing/LandingFooter'
 import { QuickLoginModal } from '../components/landing/QuickLoginModal'
 
@@ -30,23 +26,11 @@ export default function LandingPage() {
       {/* Hero Section */}
       <HeroSection onOpenLogin={handleOpenLogin} />
 
-      {/* Stats Ribbon */}
-      <StatsRibbon />
+      {/* Features Grid */}
+      <FeaturesGrid />
 
-      {/* 5-Card Dashboard Analytics */}
-      <DashboardPanels />
-
-      {/* Showcased Courses Carousel */}
-      <ShowcasedCourses onOpenLogin={handleOpenLogin} />
-
-      {/* Amrit Gyaan Kosh Case Studies */}
-      <AmritGyaanKosh onOpenLogin={handleOpenLogin} />
-
-      {/* Video Gallery */}
-      <VideoGallery onOpenLogin={handleOpenLogin} />
-
-      {/* Karmayogi 6-Hub Ecosystem */}
-      <KarmayogiHubs onOpenLogin={handleOpenLogin} />
+      {/* Workflow Section */}
+      <WorkflowSection />
 
       {/* Official Government Footer */}
       <LandingFooter />
