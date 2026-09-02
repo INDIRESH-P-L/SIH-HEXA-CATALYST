@@ -33,6 +33,7 @@ def _to_read(profile: Profile) -> ProfileRead:
         job_role=(
             JobRoleRead.model_validate(profile.job_role) if profile.job_role else None
         ),
+        initial_assessment_completed=profile.initial_assessment_completed,
         created_at=profile.created_at,
     )
 

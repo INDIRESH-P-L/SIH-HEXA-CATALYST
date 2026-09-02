@@ -542,7 +542,7 @@ function StepAssessment({
             <Spinner size={18} label="Saving…" />
           ) : (
             <>
-              Save & Generate Recommendations
+              Save & Continue
               <ChevronRight size={16} />
             </>
           )}
