@@ -50,6 +50,7 @@ async def _to_read(session: AsyncSession, material: LearningMaterial) -> Materia
         chunk_count=counts["chunk_count"],
         question_count=counts["question_count"],
         approved_count=counts["approved_count"],
+        corpus_approved=material.corpus_approved,
         error=material.error,
         created_at=material.created_at,
     )
@@ -112,6 +113,7 @@ async def upload_material(
         file_type=extension,
         competency_id=competency_id,
         status="UPLOADED",
+        corpus_approved=True,
     )
     session.add(material)
     await session.flush()
@@ -288,3 +290,21 @@ async def list_questions(
 
     rows = (await session.execute(stmt)).scalars().all()
     return [_question_read(q) for q in rows]
+
+
+@router.post(
+    "/{material_id}/toggle-corpus",
+    response_model=MaterialRead,
+    summary="Toggle approval for assistant corpus",
+)
+async def toggle_corpus(
+    material_id: uuid.UUID,
+    actor: TrainerDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MaterialRead:
+    material = await pipeline.get_material(session, material_id)
+    if material.uploaded_by != actor.id and not actor.is_admin:
+        raise ForbiddenError("That material was uploaded by another trainer.")
+    material.corpus_approved = not material.corpus_approved
+    await session.commit()
+    return await _to_read(session, material)

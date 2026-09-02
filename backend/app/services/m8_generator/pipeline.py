@@ -104,6 +104,7 @@ async def extract_and_chunk(
         )
 
     material.status = "CHUNKED"
+    material.corpus_approved = True
     await session.flush()
     log.info(
         "material %s: %d pages, %d chars, %d chunks",

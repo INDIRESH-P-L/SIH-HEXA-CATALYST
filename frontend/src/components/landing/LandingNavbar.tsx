@@ -13,14 +13,7 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const navLinks = [
-    { label: 'About Us', href: '#about' },
-    { label: 'Rule to Role', href: '#rule-to-role' },
-    { label: 'Courses', href: '#courses' },
-    { label: 'Amrit Gyaan Kosh', href: '#case-studies' },
-    { label: 'Video Gallery', href: '#video-gallery' },
-    { label: 'Hubs', href: '#hubs' },
-  ]
+  const navLinks: { label: string; href: string }[] = []
 
   return (
     <header className="sticky top-0 z-40 w-full bg-white shadow-sm border-b border-slate-200/80">
@@ -45,29 +38,31 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
                 <span className="text-16 font-extrabold tracking-tight text-[#0B3060] group-hover:text-[#F58220] transition-colors">
-                  कर्मयोगी भारत
+                  HEXA-CATALYST
                 </span>
-                <span className="text-12 font-bold text-[#F58220]">| iGOT</span>
+                <span className="text-12 font-bold text-[#F58220]">| MoSPI</span>
               </div>
               <span className="text-11 font-medium text-slate-500 tracking-wide">
-                Ministry of Statistics & Programme Implementation (MoSPI)
+                AI-Enabled Skill Intelligence Platform
               </span>
             </div>
           </Link>
         </div>
 
         {/* Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-6" aria-label="Main Navigation">
-          {navLinks.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="text-13 font-semibold text-slate-700 hover:text-[#F58220] transition-colors"
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
+        {navLinks.length > 0 && (
+          <nav className="hidden lg:flex items-center gap-6" aria-label="Main Navigation">
+            {navLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="text-13 font-semibold text-slate-700 hover:text-[#F58220] transition-colors"
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+        )}
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5">

@@ -55,8 +55,8 @@ CONTEXT_K = 4
 #: the gate exists to prevent, so it sits above it.
 GROUNDING_THRESHOLD = 0.50
 
-#: Characters of each chunk shown to the model.
-MAX_CHUNK_CHARS = 1200
+#: Characters of each chunk shown to the model. Chunks are ~3200 chars.
+MAX_CHUNK_CHARS = 4000
 
 
 @dataclass

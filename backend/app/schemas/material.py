@@ -27,6 +27,7 @@ class MaterialRead(BaseModel):
     chunk_count: int | None = None
     question_count: int | None = None
     approved_count: int | None = None
+    corpus_approved: bool = False
     error: str | None = None
     created_at: datetime | None = None
 
