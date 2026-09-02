@@ -266,7 +266,7 @@ async def explain(
             system=prompts.SYSTEM_RECOMMENDATION,
             user_id=user_id,
             temperature=0.4,
-            max_tokens=220,
+            max_tokens=700,
         )
         text_out = result if isinstance(result, str) else str(result)
         if text_out.strip():

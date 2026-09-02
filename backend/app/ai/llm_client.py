@@ -192,6 +192,17 @@ async def _call_groq(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+
+    # GPT-OSS models think before they answer, and the reasoning is billed
+    # against the same max_tokens budget as the visible reply. Left at the
+    # default, a verbose chain of thought can consume the whole allowance and
+    # the response comes back successful but *empty* — which every caller here
+    # reads as "the model had nothing to say" and quietly substitutes a
+    # template. Asking for low effort keeps the budget for the answer; the
+    # prose these calls produce needs none of the deliberation.
+    if "gpt-oss" in model:
+        kwargs["reasoning_effort"] = "low"
+
     if json_schema is not None:
         # Structured outputs cannot be combined with streaming or tool use.
         kwargs["response_format"] = {
@@ -204,7 +215,19 @@ async def _call_groq(
         }
 
     resp = await client.chat.completions.create(**kwargs)
-    content = resp.choices[0].message.content or ""
+    choice = resp.choices[0]
+    content = choice.message.content or ""
+    if not content.strip():
+        # Callers treat empty as "no answer" and fall back to a template. Say so
+        # here, with the finish reason, so a systematic cause — a token budget
+        # spent on reasoning, a content filter — is visible in the log instead
+        # of looking like the model simply declining.
+        log.warning(
+            "empty completion: model=%s finish_reason=%s max_tokens=%d",
+            model,
+            getattr(choice, "finish_reason", "?"),
+            max_tokens,
+        )
     usage = getattr(resp, "usage", None)
     return (
         content,
@@ -308,6 +331,14 @@ async def complete(
                     log.warning("model %s returned unparsable JSON: %s", model, exc)
                     continue
             else:
+                if not text.strip():
+                    # An empty completion is a failure, not an answer, and it
+                    # must never reach the cache: the key is derived from the
+                    # prompt, so one transient empty response would be replayed
+                    # for that prompt forever and the caller would fall back to
+                    # a template every time, with no further calls to reveal it.
+                    last_error = LLMUnavailable("model returned an empty completion")
+                    continue
                 payload = {"value": text.strip()}
 
             await _write_cache(session, key, model, purpose, payload)

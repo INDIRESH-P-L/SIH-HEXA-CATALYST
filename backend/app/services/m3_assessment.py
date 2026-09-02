@@ -285,7 +285,7 @@ async def _feedback(
             system=prompts.SYSTEM_FEEDBACK,
             user_id=user_id,
             temperature=0.4,
-            max_tokens=220,
+            max_tokens=700,
         )
         text = result if isinstance(result, str) else str(result)
         if text.strip():

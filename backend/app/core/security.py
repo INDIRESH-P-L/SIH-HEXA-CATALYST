@@ -8,15 +8,23 @@ That single function is the SSO-ready seam described in §13.10: swapping in a
 government identity provider such as Parichay changes the issuer, the signing
 key and the claims mapping here, and nothing else in the codebase. This is a
 seam, not an integration — no government SSO is claimed or implemented.
+
+It accepts both signing families, chosen by the token's own ``alg`` header:
+symmetric HS256 against a shared secret, and asymmetric ES256/RS256 against a
+public key fetched from the issuer's JWKS. Supabase moved user tokens to
+per-project elliptic-curve keys, so a deployment can legitimately see either —
+including both at once, while a key rotation is in flight.
 """
 
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
+import httpx
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -36,6 +44,58 @@ _bearer = HTTPBearer(auto_error=False)
 #: the verification path is identical in both modes.
 JWT_AUDIENCE = "authenticated"
 JWT_ALGORITHM = "HS256"
+
+#: Supabase signs user tokens with a per-project elliptic-curve key and
+#: publishes the public half as a JWKS. Projects created before that change
+#: still sign HS256 with the shared ``SUPABASE_JWT_SECRET``, and local mode
+#: always does, so both families have to be accepted — chosen by the token's
+#: own ``alg`` header, never by configuration, because the two can differ
+#: within one project during a key rotation.
+ASYMMETRIC_ALGORITHMS = ("ES256", "ES384", "ES512", "RS256", "RS384", "RS512")
+
+_JWKS_LOCK = threading.Lock()
+_JWKS_CACHE: dict[str, Any] | None = None
+
+
+def _fetch_jwks(*, force: bool = False) -> dict[str, Any]:
+    """Return the project's JWKS, fetched once and then cached.
+
+    Synchronous on purpose: verification happens inside a request and the
+    result is cached for the life of the process, so this makes one blocking
+    call on the first authenticated request rather than one per request.
+    """
+    global _JWKS_CACHE
+    with _JWKS_LOCK:
+        if _JWKS_CACHE is not None and not force:
+            return _JWKS_CACHE
+        if not settings.SUPABASE_URL:
+            raise AuthError(
+                "Token is signed with an asymmetric key, but SUPABASE_URL is "
+                "not set, so its public key cannot be fetched."
+            )
+        url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        try:
+            response = httpx.get(url, timeout=10.0)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise AuthError(f"Could not fetch the token signing keys: {exc}") from exc
+        _JWKS_CACHE = response.json()
+        return _JWKS_CACHE
+
+
+def _signing_key(kid: str | None) -> dict[str, Any]:
+    """Find the public key for a key id, refetching once if it is unknown.
+
+    An unrecognised ``kid`` normally means the project rotated its signing key
+    since this process cached the set, so one forced refresh is tried before
+    the token is rejected.
+    """
+    for attempt in (False, True):
+        keys = _fetch_jwks(force=attempt).get("keys", [])
+        for key in keys:
+            if kid is None or key.get("kid") == kid:
+                return key
+    raise AuthError("Token was signed with a key this server does not recognise.")
 
 
 @dataclass(frozen=True)
@@ -95,20 +155,34 @@ def create_access_token(
 def decode_token(token: str) -> TokenClaims:
     """Verify a bearer token and return its claims.
 
-    The signing secret comes from ``settings.jwt_secret``, which resolves to the
-    Supabase JWT secret or the local secret depending on AUTH_MODE. Everything
-    else about verification is identical between the two.
+    The key is chosen by the token's own ``alg`` header. An asymmetric token is
+    verified against the project's published public key; a symmetric one against
+    ``settings.jwt_secret``, which resolves to the Supabase JWT secret or the
+    local secret depending on AUTH_MODE. Everything after the signature check is
+    identical for both.
     """
-    secret = settings.jwt_secret
-    if not secret:
-        raise AuthError(
-            "Authentication is not configured on the server: no JWT secret is set."
-        )
+    try:
+        header = jwt.get_unverified_header(token)
+    except JWTError as exc:
+        raise AuthError(f"Invalid or expired token: {exc}") from exc
+
+    algorithm = str(header.get("alg") or JWT_ALGORITHM)
+    key: Any
+    if algorithm in ASYMMETRIC_ALGORITHMS:
+        key = _signing_key(header.get("kid"))
+    else:
+        algorithm = JWT_ALGORITHM
+        key = settings.jwt_secret
+        if not key:
+            raise AuthError(
+                "Authentication is not configured on the server: no JWT secret is set."
+            )
+
     try:
         claims: dict[str, Any] = jwt.decode(
             token,
-            secret,
-            algorithms=[JWT_ALGORITHM],
+            key,
+            algorithms=[algorithm],
             audience=JWT_AUDIENCE,
             options={"verify_aud": True},
         )
