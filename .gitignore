@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environment — never commit secrets
+.env
+.env.local
+backend/.env
+mock-catalogue/.env
+frontend/.env
+
+# Local uploads (local STORAGE_MODE)
+backend/storage/materials/
+
+# FastEmbed model cache
+.fastembed_cache/
+backend/.fastembed_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

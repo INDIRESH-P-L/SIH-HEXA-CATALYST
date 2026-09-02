@@ -1,0 +1,70 @@
+/* Self-hosted so the demonstration runs with the network disconnected.
+   A Google Fonts link would fail that rehearsal. */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light only. There is no theme toggle. */
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans text-14 antialiased;
+  }
+
+  /* Numerals line up in every table column and on every axis tick. */
+  .tabular,
+  th[data-numeric],
+  td[data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Visible focus on every interactive element. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-paper;
+  }
+
+  h1 { @apply text-24 font-semibold; }
+  h2 { @apply text-16 font-semibold; }
+  h3 { @apply text-14 font-semibold; }
+
+  /* Body text on mobile never drops below 16px. */
+  @media (max-width: 767px) {
+    body { @apply text-16; }
+  }
+}
+
+@layer components {
+  /* The mono eyebrow used on every card header. */
+  .eyebrow {
+    @apply font-mono text-11 font-medium uppercase tracking-[0.08em] text-ink-3;
+  }
+
+  .numeral {
+    @apply font-mono text-13 font-medium tabular;
+  }
+}
+
+/* One animated element per view, and none of it for readers who opt out. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

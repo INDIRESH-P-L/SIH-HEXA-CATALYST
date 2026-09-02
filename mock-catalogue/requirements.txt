@@ -1,0 +1,4 @@
+# The mock catalogue runs as its own process with its own minimal dependencies.
+fastapi>=0.115,<0.117
+uvicorn[standard]>=0.32,<0.35
+pydantic>=2.9,<3

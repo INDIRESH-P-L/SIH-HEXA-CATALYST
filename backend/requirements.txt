@@ -1,0 +1,21 @@
+# ── Locked stack (MASTER_BUILD_PROMPT §3). Do not substitute. ────────────────
+fastapi>=0.115,<0.117
+uvicorn[standard]>=0.32,<0.35
+pydantic[email]>=2.9,<3          # [email] extra: EmailStr validation on register/login
+pydantic-settings>=2.6,<3
+sqlalchemy[asyncio]>=2.0.36,<2.1
+asyncpg>=0.30,<0.31
+python-jose[cryptography]>=3.3,<4
+groq>=0.13,<1
+fastembed>=0.4,<0.8
+pgvector>=0.3.6,<0.5
+pdfplumber>=0.11,<0.12          # MIT. NOT PyMuPDF — that is AGPL-3.0.
+python-docx>=1.1,<2
+python-pptx>=1.0,<2
+python-multipart>=0.0.12,<0.1
+httpx>=0.27,<0.29
+python-dotenv>=1.0,<2
+
+# ── Test ─────────────────────────────────────────────────────────────────────
+pytest>=8.3,<9
+pytest-asyncio>=0.24,<1.1

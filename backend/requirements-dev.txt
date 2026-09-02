@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Dev-only. Generates the §15 sample handouts under app/seed/assets/.
+# Not a runtime dependency and not a substitution for anything in §3.
+reportlab>=4.2,<5
