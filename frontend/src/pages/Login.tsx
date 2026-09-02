@@ -5,7 +5,7 @@ import { ArrowLeft, Briefcase, Lock, Mail, Sparkles, User2, UserPlus } from 'luc
 import { ErrorNote, Spinner } from '../components/common'
 import { api, API, errorMessage } from '../lib/api'
 import { useAuth } from '../lib/auth'
-import type { JobRole, TokenResponse } from '../lib/types'
+import type { JobRole } from '../lib/types'
 
 /** Seeded local accounts, listed with rich visual cards for seamless demo access. */
 const DEMO_ACCOUNTS = [
@@ -81,21 +81,26 @@ function SignUpForm() {
 
     setBusy(true)
     try {
-      // Call the register endpoint directly
-      const { data } = await api.post<TokenResponse>(API.v1('/auth/register'), {
+      // Call the register endpoint directly — signIn will store the token
+      await api.post(API.v1('/auth/register'), {
         email: email.trim(),
         password,
         full_name: fullName.trim(),
         job_role_code: jobRoleCode,
       })
-      // Store the token then navigate — AuthProvider will pick it up
-      const { setToken } = await import('../lib/api')
-      setToken(data.access_token)
-      // Sign in to refresh the auth context
+      // Now sign in to populate the auth context with the new token
       await signIn(email.trim(), password)
       navigate('/onboarding', { replace: true })
-    } catch (caught) {
-      setError(errorMessage(caught, 'Registration failed. Try a different email.'))
+    } catch (caught: unknown) {
+      // Give actionable messages for the two most common failure modes
+      const status = (caught as { response?: { status?: number } })?.response?.status
+      if (status === 409) {
+        setError('That email is already registered. Please sign in instead.')
+      } else if (status === 422) {
+        setError('Please check your details — the password must be at least 8 characters.')
+      } else {
+        setError(errorMessage(caught, 'Registration failed. Please try again.'))
+      }
     } finally {
       setBusy(false)
     }
