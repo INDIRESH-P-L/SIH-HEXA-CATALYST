@@ -15,9 +15,11 @@ import type {
   GapList,
   GenerationSummary,
   Health,
+  JobRole,
   Material,
   MyAnalytics,
   MyCompetency,
+  Profile,
   Question,
   RecommendationBatch,
   RecommendationContext,
@@ -35,6 +37,32 @@ export function useHealth() {
   })
 }
 
+// ── M1 · profile ─────────────────────────────────────────────────────────────
+
+export function useJobRoles() {
+  return useQuery({
+    queryKey: ['job-roles'],
+    queryFn: async () => (await api.get<JobRole[]>(API.v1('/job-roles'))).data,
+    staleTime: 30 * 60_000,
+  })
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: {
+      full_name?: string
+      designation?: string
+      station?: string
+      years_experience?: number
+      education?: string
+    }) => (await api.patch<Profile>(API.v1('/profiles/me'), data)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+    },
+  })
+}
+
 // ── M2 · competencies ────────────────────────────────────────────────────────
 
 export function useCompetencies() {
@@ -42,6 +70,19 @@ export function useCompetencies() {
     queryKey: ['competencies'],
     queryFn: async () => (await api.get<Competency[]>(API.v1('/competencies'))).data,
     staleTime: 10 * 60_000,
+  })
+}
+
+export function useDeclareBatch() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (declarations: Array<{ competency_id: string; level: number; note?: string }>) =>
+      (await api.post(API.v1('/competencies/me/declare'), { declarations })).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['competencies', 'me'] })
+      void queryClient.invalidateQueries({ queryKey: ['gaps'] })
+      void queryClient.invalidateQueries({ queryKey: ['analytics'] })
+    },
   })
 }
 

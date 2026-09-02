@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
 import { Spinner } from './components/common'
 import { useAuth } from './lib/auth'
+import { isOnboarded } from './lib/onboarding'
 
 import AdminDashboard from './pages/AdminDashboard'
 import Architecture from './pages/Architecture'
@@ -13,11 +14,15 @@ import Dashboard from './pages/Dashboard'
 import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import MyCompetencies from './pages/MyCompetencies'
+import Onboarding from './pages/Onboarding'
 import Recommendations from './pages/Recommendations'
 import TrainerConsole from './pages/TrainerConsole'
 
 /**
  * Route guard.
+ *
+ * Checks authentication and role, then redirects new officers (those who have
+ * not yet completed the onboarding wizard) to /onboarding.
  *
  * This is a convenience for the interface, not a security boundary: every
  * endpoint re-checks the caller's role server-side against the database. Hiding
@@ -26,9 +31,11 @@ import TrainerConsole from './pages/TrainerConsole'
 function RequireRole({
   role,
   children,
+  skipOnboardingCheck = false,
 }: {
   role?: 'trainer' | 'admin'
   children: React.ReactNode
+  skipOnboardingCheck?: boolean
 }) {
   const { user, loading, isTrainer, isAdmin } = useAuth()
 
@@ -42,6 +49,12 @@ function RequireRole({
   if (!user) return <Navigate to="/login" replace />
   if (role === 'trainer' && !isTrainer) return <Navigate to="/" replace />
   if (role === 'admin' && !isAdmin) return <Navigate to="/" replace />
+
+  // Redirect new officers to the onboarding wizard before they see the dashboard.
+  // The /onboarding route itself sets skipOnboardingCheck=true to avoid a loop.
+  if (!skipOnboardingCheck && !isOnboarded(user.id, user.email)) {
+    return <Navigate to="/onboarding" replace />
+  }
 
   return <>{children}</>
 }
@@ -68,6 +81,16 @@ export default function App() {
 
       {/* Direct Login Page */}
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+
+      {/* Onboarding wizard — authenticated but bypasses the onboarded check */}
+      <Route
+        path="/onboarding"
+        element={
+          <RequireRole skipOnboardingCheck>
+            <Onboarding />
+          </RequireRole>
+        }
+      />
 
       {/* Authenticated Officer Portal */}
       <Route
