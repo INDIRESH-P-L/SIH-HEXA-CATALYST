@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, type FormEvent, useEffect } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Briefcase, Lock, Mail, Sparkles, User2, UserPlus } from 'lucide-react'
 
 import { ErrorNote, Spinner } from '../components/common'
@@ -246,10 +246,15 @@ function SignUpForm() {
 // ── Main Login page ───────────────────────────────────────────────────────────
 
 export default function Login() {
-  const { signIn } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { signIn } = useAuth()
 
-  const [tab, setTab] = useState<'signin' | 'signup'>('signin')
+  // Parse URL search params to see if we should default to 'signup'
+  const queryParams = new URLSearchParams(location.search)
+  const initialTab = queryParams.get('tab') === 'signup' ? 'signup' : 'signin'
+
+  const [tab, setTab] = useState<'signin' | 'signup'>(initialTab)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)

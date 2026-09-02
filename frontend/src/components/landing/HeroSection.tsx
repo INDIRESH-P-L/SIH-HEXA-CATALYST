@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { ArrowRight, Award, BookOpen, CheckCircle, ChevronRight } from 'lucide-react'
 
 interface HeroSectionProps {
@@ -97,6 +98,13 @@ export function HeroSection({ onOpenLogin }: HeroSectionProps) {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-3.5 pt-2">
+              <Link
+                to="/login"
+                className="flex items-center gap-2 rounded-full border-2 border-[#0B3060] bg-white/90 backdrop-blur px-7 py-3 text-15 font-bold text-[#0B3060] shadow-sm hover:bg-slate-50 transition-all transform hover:-translate-y-0.5"
+              >
+                <span>Sign Up</span>
+              </Link>
+
               <button
                 type="button"
                 onClick={onOpenLogin}
@@ -108,7 +116,7 @@ export function HeroSection({ onOpenLogin }: HeroSectionProps) {
 
               <a
                 href="#rule-to-role"
-                className="flex items-center gap-2 rounded-full border-2 border-slate-300 bg-white/90 backdrop-blur px-6 py-3 text-14 font-bold text-[#0B3060] shadow-sm hover:border-[#F58220] hover:bg-white transition-all"
+                className="flex items-center gap-2 rounded-full border-2 border-slate-300 bg-white/90 backdrop-blur px-6 py-3 text-14 font-bold text-slate-700 shadow-sm hover:border-[#F58220] hover:bg-white transition-all"
               >
                 <span>Explore FRAC Model</span>
                 <ChevronRight size={16} />

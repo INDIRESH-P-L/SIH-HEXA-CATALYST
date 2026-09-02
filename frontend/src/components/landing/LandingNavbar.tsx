@@ -91,10 +91,16 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
             </div>
           ) : (
             <>
+              <Link
+                to="/login"
+                className="rounded-full border-2 border-[#0B3060] bg-white px-5 py-1.5 text-13 font-bold text-[#0B3060] shadow-sm hover:bg-slate-50 transition-all"
+              >
+                Sign Up
+              </Link>
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="rounded-full border-2 border-[#0B3060] bg-white px-5 py-1.5 text-13 font-bold text-[#0B3060] shadow-sm hover:bg-slate-50 transition-all"
+                className="rounded-full border-2 border-transparent bg-slate-100 px-5 py-1.5 text-13 font-bold text-slate-700 shadow-sm hover:bg-slate-200 transition-all"
               >
                 Log In
               </button>
@@ -136,6 +142,13 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
           ))}
           {!user && (
             <div className="pt-2 flex flex-col gap-2">
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full rounded-lg border-2 border-[#0B3060] py-2.5 text-14 font-bold text-[#0B3060] text-center"
+              >
+                Sign Up
+              </Link>
               <button
                 type="button"
                 onClick={() => {
