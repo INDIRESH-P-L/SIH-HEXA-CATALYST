@@ -10,6 +10,7 @@ import Assessments from './pages/Assessments'
 import Assistant from './pages/Assistant'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
+import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import MyCompetencies from './pages/MyCompetencies'
 import Recommendations from './pages/Recommendations'
@@ -58,8 +59,17 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Public Landing Page & Portal */}
+      <Route path="/portal" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
+
+      {/* Unauthenticated Home goes to LandingPage */}
+      {!user && <Route path="/" element={<LandingPage />} />}
+
+      {/* Direct Login Page */}
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
 
+      {/* Authenticated Officer Portal */}
       <Route
         path="/*"
         element={

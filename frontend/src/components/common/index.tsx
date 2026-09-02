@@ -29,10 +29,10 @@ export function Card({
   as?: 'section' | 'div' | 'article'
 }) {
   return (
-    <Tag className={`rounded border border-rule bg-surface p-5 ${className}`}>
+    <Tag className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs ${className}`}>
       {(label || action) && (
-        <header className="mb-4 flex items-center justify-between gap-3">
-          {label ? <h2 className="eyebrow">{label}</h2> : <span />}
+        <header className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          {label ? <h2 className="text-12 font-bold uppercase tracking-wider text-[#0B3060]">{label}</h2> : <span />}
           {action}
         </header>
       )}
@@ -218,8 +218,8 @@ export function LevelBar({
             return (
               <span
                 key={level}
-                className={`h-2 w-5 origin-left rounded-sm ${
-                  filled ? 'bg-accent' : 'bg-rule-2'
+                className={`h-2.5 w-6 origin-left rounded-md transition-all ${
+                  filled ? 'bg-[#0F54B9] shadow-xs' : 'bg-slate-200'
                 } ${animate && filled && level === current ? 'animate-level-fill' : ''}`}
               />
             )
@@ -227,7 +227,7 @@ export function LevelBar({
         </div>
       </div>
       {showLabel && (
-        <span className={`numeral ${current === 0 ? 'text-ink-3' : 'text-ink-2'}`}>
+        <span className={`font-mono text-12 font-bold tabular ${current === 0 ? 'text-slate-400' : 'text-[#0B3060]'}`}>
           {label}
         </span>
       )}
@@ -416,10 +416,10 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200/80 pb-4">
       <div>
-        <h1 className="text-24 font-semibold text-ink">{title}</h1>
-        {description && <p className="mt-1 max-w-prose text-14 text-ink-2">{description}</p>}
+        <h1 className="text-24 sm:text-28 font-extrabold text-[#0B3060] tracking-tight">{title}</h1>
+        {description && <p className="mt-1 max-w-prose text-13 font-medium text-slate-600">{description}</p>}
       </div>
       {action}
     </div>

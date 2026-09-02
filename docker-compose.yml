@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: sip
       POSTGRES_DB: sip
     ports:
-      - "5433:5432"          # 5433 on the host to avoid clashing with a local 5432
+      - "5434:5432"          # 5434 on the host to avoid clashing with 5433 or local 5432
     volumes:
       - sip_pgdata:/var/lib/postgresql/data
     healthcheck:

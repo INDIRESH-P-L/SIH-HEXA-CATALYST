@@ -43,6 +43,24 @@ export default {
           decide: '#EB6834',
           observe: '#7A5AA8',
         },
+
+        // iGOT Karmayogi Bharat theme tokens
+        karmayogi: {
+          saffron: '#F58220',
+          saffronDark: '#D96B0B',
+          saffronLight: '#FFE8D6',
+          navy: '#0B3060',
+          navyDark: '#071E3D',
+          royal: '#154399',
+          royalDark: '#0F3275',
+          cream: '#FFF8F0',
+          creamDark: '#FFF1E0',
+          creamPattern: '#FDEEDA',
+          gold: '#F6A609',
+          green: '#046A38',
+          cardBlue: '#0F54B9',
+          cardHeader: '#1A5FC2',
+        },
       },
       fontFamily: {
         sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],

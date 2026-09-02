@@ -36,7 +36,6 @@ export const RAMP = ['#CDE2FB', '#9EC5F4', '#5598E7', '#256ABF', '#0D366B'] as c
 const GRID = '#EDF0F4'
 const AXIS = '#DCE1E8'
 const AXIS_TEXT = '#8A93A1'
-const REQUIRED_FILL = '#DCE1E8'
 
 // Severity tokens, mirrored from tailwind.config.js for chart fills.
 // Recharts needs literal colours; these are the only hex values in the app
@@ -86,14 +85,14 @@ export function CompetencyRadar({ data }: { data: RadarPoint[] }) {
           axisLine={false}
         />
         {/* Required sits underneath as a filled polygon, current as a stroke. */}
-        <Radar name="Required" dataKey="Required" stroke={AXIS} fill={REQUIRED_FILL} fillOpacity={1} />
+        <Radar name="Required Target (FRAC)" dataKey="Required" stroke="#0F54B9" strokeWidth={1.5} fill="#EAF1FC" fillOpacity={0.6} />
         <Radar
-          name="Current"
+          name="Current Measured Level"
           dataKey="Current"
-          stroke={SERIES[0]}
-          strokeWidth={2}
-          fill={SERIES[0]}
-          fillOpacity={0.15}
+          stroke="#F58220"
+          strokeWidth={2.5}
+          fill="#F58220"
+          fillOpacity={0.25}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
         <Tooltip {...tooltipStyle} />

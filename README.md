@@ -43,16 +43,15 @@ Four processes. The first three are required.
 ### 0 · Prerequisites
 
 Python **3.11** (not 3.14 — FastEmbed's ONNX runtime has no 3.14 wheels),
-Node 18+, Docker Desktop.
+Node 18+. (No Docker required).
 
-### 1 · Database
+### 1 · Database (Native PostgreSQL + pgvector)
 
 ```bash
-docker compose up -d db
+./scripts/start_local_db.sh
 ```
 
-PostgreSQL 16 with pgvector, on host port **5433** to avoid colliding with a
-local 5432.
+Runs native PostgreSQL 18 with pgvector on host port **5434**.
 
 ### 2 · Backend
 
