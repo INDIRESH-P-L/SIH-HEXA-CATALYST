@@ -306,6 +306,25 @@ async def load_competency_standing(
     )
 
 
+async def has_evidence_on_file(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Whether this officer has ever declared or been assessed on anything.
+
+    This is the durable answer to "has this officer been through onboarding?".
+    The wizard's whole purpose is to write a first row into the ledger, so the
+    presence of a row *is* the completion signal — and unlike a browser flag it
+    survives a new device, a cleared cache and a second session, which matters
+    because re-running the wizard would append fresh self-declarations that
+    supersede real assessment evidence.
+    """
+    return (
+        await session.scalar(
+            select(CompetencyEvidence.id)
+            .where(CompetencyEvidence.user_id == user_id)
+            .limit(1)
+        )
+    ) is not None
+
+
 async def declare_baseline(
     session: AsyncSession,
     *,

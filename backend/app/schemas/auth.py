@@ -45,6 +45,15 @@ class MeResponse(BaseModel):
     auth_mode: str = Field(
         description="Which auth seam issued this session: local or supabase."
     )
+    onboarded: bool = Field(
+        default=True,
+        description=(
+            "Whether this officer has any competency evidence on file. False "
+            "means the onboarding wizard has never been completed. Derived "
+            "from the ledger, not from a client-side flag, so it holds across "
+            "devices."
+        ),
+    )
 
 
 TokenResponse.model_rebuild()

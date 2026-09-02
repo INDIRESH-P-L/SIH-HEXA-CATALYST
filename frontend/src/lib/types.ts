@@ -47,6 +47,8 @@ export interface Me {
   roles: string[]
   profile: Profile
   auth_mode: string
+  /** Whether any competency evidence is on file — the onboarding signal. */
+  onboarded: boolean
 }
 
 export interface TokenResponse {

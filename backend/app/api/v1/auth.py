@@ -23,7 +23,7 @@ from app.models.user import Profile, UserRole
 from app.schemas.auth import LoginRequest, MeResponse, RegisterRequest, TokenResponse
 from app.schemas.profile import JobRoleRead, ProfileRead
 from app.services.m1_identity import get_auth_backend
-from app.services.m2_framework import get_job_role_by_code
+from app.services.m2_framework import get_job_role_by_code, has_evidence_on_file
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["M1 · identity"])
@@ -120,6 +120,9 @@ async def register(
             roles=sorted(roles),
             profile=_profile_payload(refreshed),
             auth_mode=settings.AUTH_MODE,
+            # A brand-new account has an empty ledger, which is precisely what
+            # sends it to the onboarding wizard.
+            onboarded=False,
         ),
     )
 
@@ -139,6 +142,7 @@ async def login(
         raise AuthError("That account has no profile in this deployment.")
 
     roles = await load_roles(session, session_dto.user_id)
+    onboarded = await has_evidence_on_file(session, session_dto.user_id)
     session.add(
         ActivityLog(
             user_id=session_dto.user_id,
@@ -159,16 +163,21 @@ async def login(
             roles=sorted(roles) or ["employee"],
             profile=_profile_payload(profile),
             auth_mode=settings.AUTH_MODE,
+            onboarded=onboarded,
         ),
     )
 
 
 @router.get("/me", response_model=MeResponse, summary="The signed-in officer")
-async def me(user: CurrentUserDep) -> MeResponse:
+async def me(
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MeResponse:
     return MeResponse(
         id=user.id,
         email=user.email,
         roles=sorted(user.roles),
         profile=_profile_payload(user.profile),
         auth_mode=settings.AUTH_MODE,
+        onboarded=await has_evidence_on_file(session, user.id),
     )

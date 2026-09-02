@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
 import { Spinner } from './components/common'
 import { useAuth } from './lib/auth'
-import { isOnboarded } from './lib/onboarding'
+import { needsOnboarding } from './lib/onboarding'
 
 import AdminDashboard from './pages/AdminDashboard'
 import Architecture from './pages/Architecture'
@@ -21,8 +21,8 @@ import TrainerConsole from './pages/TrainerConsole'
 /**
  * Route guard.
  *
- * Checks authentication and role, then redirects new officers (those who have
- * not yet completed the onboarding wizard) to /onboarding.
+ * Checks authentication and role, then redirects officers who have no
+ * competency evidence on file to the onboarding wizard.
  *
  * This is a convenience for the interface, not a security boundary: every
  * endpoint re-checks the caller's role server-side against the database. Hiding
@@ -31,11 +31,9 @@ import TrainerConsole from './pages/TrainerConsole'
 function RequireRole({
   role,
   children,
-  skipOnboardingCheck = false,
 }: {
   role?: 'trainer' | 'admin'
   children: React.ReactNode
-  skipOnboardingCheck?: boolean
 }) {
   const { user, loading, isTrainer, isAdmin } = useAuth()
 
@@ -50,11 +48,31 @@ function RequireRole({
   if (role === 'trainer' && !isTrainer) return <Navigate to="/" replace />
   if (role === 'admin' && !isAdmin) return <Navigate to="/" replace />
 
-  // Redirect new officers to the onboarding wizard before they see the dashboard.
-  // The /onboarding route itself sets skipOnboardingCheck=true to avoid a loop.
-  if (!skipOnboardingCheck && !isOnboarded(user.id, user.email)) {
-    return <Navigate to="/onboarding" replace />
+  if (needsOnboarding(user)) return <Navigate to="/onboarding" replace />
+
+  return <>{children}</>
+}
+
+/**
+ * The wizard's own guard — the mirror image of the one above.
+ *
+ * Re-entering the wizard is destructive: it appends a self-declaration for
+ * every competency, which supersedes assessment evidence in the ledger. So an
+ * officer who is already onboarded is sent away rather than allowed back in by
+ * a typed URL or a stale bookmark.
+ */
+function RequireOnboarding({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-full items-center justify-center py-20">
+        <Spinner label="Restoring your session" />
+      </div>
+    )
   }
+  if (!user) return <Navigate to="/login" replace />
+  if (!needsOnboarding(user)) return <Navigate to="/" replace />
 
   return <>{children}</>
 }
@@ -82,13 +100,13 @@ export default function App() {
       {/* Direct Login Page */}
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
 
-      {/* Onboarding wizard — authenticated but bypasses the onboarded check */}
+      {/* Onboarding wizard — only for officers who have not been through it */}
       <Route
         path="/onboarding"
         element={
-          <RequireRole skipOnboardingCheck>
+          <RequireOnboarding>
             <Onboarding />
-          </RequireRole>
+          </RequireOnboarding>
         }
       />
 

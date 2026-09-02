@@ -69,13 +69,26 @@ export default {
       borderRadius: { DEFAULT: '6px', sm: '4px', lg: '8px' },
       fontSize: {
         // The whole scale. Nothing outside it.
+        //
+        // `extend` merges with Tailwind's *named* defaults (xs, sm, base…), not
+        // with numeric keys — so a numeric step absent from this list emits no
+        // CSS at all and the element silently inherits its parent's size. Every
+        // step the interface actually uses therefore has to appear here.
+        9: ['9px', { lineHeight: '12px' }],
+        10: ['10px', { lineHeight: '14px' }],
         11: ['11px', { lineHeight: '16px' }],
         12: ['12px', { lineHeight: '18px' }],
         13: ['13px', { lineHeight: '20px' }],
         14: ['14px', { lineHeight: '22px' }],
+        15: ['15px', { lineHeight: '23px' }],
         16: ['16px', { lineHeight: '24px' }],
+        17: ['17px', { lineHeight: '25px' }],
+        18: ['18px', { lineHeight: '26px' }],
+        19: ['19px', { lineHeight: '27px' }],
         20: ['20px', { lineHeight: '28px' }],
+        22: ['22px', { lineHeight: '30px' }],
         24: ['24px', { lineHeight: '32px' }],
+        28: ['28px', { lineHeight: '36px' }],
         32: ['32px', { lineHeight: '38px' }],
         48: ['48px', { lineHeight: '54px' }],
       },
@@ -104,10 +117,16 @@ export default {
           from: { transform: 'scaleX(0)' },
           to: { transform: 'scaleX(1)' },
         },
+        'bounce-once': {
+          '0%': { transform: 'scale(0.8)', opacity: '0' },
+          '60%': { transform: 'scale(1.08)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 180ms ease-out',
         'level-fill': 'level-fill 400ms ease-out',
+        'bounce-once': 'bounce-once 420ms ease-out',
       },
     },
   },

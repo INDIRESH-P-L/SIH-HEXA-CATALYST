@@ -15,7 +15,6 @@ import type {
   GapList,
   GenerationSummary,
   Health,
-  JobRole,
   Material,
   MyAnalytics,
   MyCompetency,
@@ -39,16 +38,12 @@ export function useHealth() {
 
 // ── M1 · profile ─────────────────────────────────────────────────────────────
 
-export function useJobRoles() {
-  return useQuery({
-    queryKey: ['job-roles'],
-    queryFn: async () => (await api.get<JobRole[]>(API.v1('/job-roles'))).data,
-    staleTime: 30 * 60_000,
-  })
-}
-
+/**
+ * The signed-in officer's profile is held by AuthProvider in React state, not
+ * in the query cache, so there is no key to invalidate here. Callers fold the
+ * returned Profile back into the session with `applyProfile` from useAuth().
+ */
 export function useUpdateProfile() {
-  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (data: {
       full_name?: string
@@ -57,9 +52,6 @@ export function useUpdateProfile() {
       years_experience?: number
       education?: string
     }) => (await api.patch<Profile>(API.v1('/profiles/me'), data)).data,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
-    },
   })
 }
 

@@ -1,7 +1,8 @@
 """Async SQLAlchemy engine and session dependency.
 
 Pool configuration is derived from the DB URL, not hand-set, so switching
-between local Docker, Supavisor session mode and Supavisor transaction mode is
+between a local PostgreSQL server, Supavisor session mode and Supavisor
+transaction mode is
 a single environment change (§3 critical fact 5).
 """
 

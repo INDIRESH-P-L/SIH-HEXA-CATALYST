@@ -17,13 +17,15 @@ import {
 } from 'react'
 
 import { api, API, getToken, setToken } from './api'
-import type { Me, TokenResponse } from './types'
+import type { Me, Profile, TokenResponse } from './types'
 
 interface AuthState {
   user: Me | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<Me>
   signOut: () => void
+  /** Fold a saved profile back into the session so the shell renders it. */
+  applyProfile: (profile: Profile) => void
   hasRole: (role: string) => boolean
   isTrainer: boolean
   isAdmin: boolean
@@ -73,17 +75,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const applyProfile = useCallback((profile: Profile) => {
+    setUser((current) => (current ? { ...current, profile } : current))
+  }, [])
+
   const value = useMemo<AuthState>(
     () => ({
       user,
       loading,
       signIn,
       signOut,
+      applyProfile,
       hasRole: (role: string) => Boolean(user?.roles.includes(role)),
       isTrainer: Boolean(user?.roles.includes('trainer') || user?.roles.includes('admin')),
       isAdmin: Boolean(user?.roles.includes('admin')),
     }),
-    [user, loading, signIn, signOut],
+    [user, loading, signIn, signOut, applyProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

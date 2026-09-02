@@ -1,16 +1,23 @@
 /**
- * Onboarding wizard — shown once to newly registered officers.
+ * Onboarding wizard — shown once to an officer with no competency evidence.
  *
  * Three steps, matching the approved implementation plan:
  *   1. Employee Profile     → PATCH /profiles/me
  *   2. Competency Self-Assessment → POST /competencies/me/declare (batch)
  *   3. Generating Recommendations → POST /recommendations/generate → /recommendations
  *
+ * Step 2 is destructive if repeated: it appends a self-declaration for every
+ * competency, and the ledger's latest row per (user, competency) wins. The
+ * route guard in App.tsx is what keeps it to one pass; see lib/onboarding.ts.
+ *
+ * Both forms hold their state in this parent rather than in the step
+ * components, because the steps unmount when you move between them and a Back
+ * button that silently discards what you typed is worse than no Back button.
+ *
  * Design language: identical to the authenticated Karmayogi Bharat shell
  * (tricolor strip, #0B3060 navy, #F58220 saffron, white cards).
  */
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import {
   BookOpen,
   Brain,
@@ -26,7 +33,7 @@ import {
 
 import { ErrorNote, Spinner } from '../components/common'
 import { useAuth } from '../lib/auth'
-import { markOnboarded } from '../lib/onboarding'
+import { fracLabel } from '../lib/format'
 import {
   useCompetencies,
   useDeclareBatch,
@@ -38,13 +45,11 @@ import {
 
 const TOTAL_STEPS = 3
 
-const FRAC_LABELS: Record<number, string> = {
-  0: 'No Experience',
-  1: 'Awareness',
-  2: 'Application',
-  3: 'Leveraging for Decisions',
-  4: 'Subject Matter Expert',
-}
+/** Mirrors ProfileUpdate in backend/app/schemas/profile.py. */
+const NAME_MIN = 2
+const NAME_MAX = 120
+const YEARS_MIN = 0
+const YEARS_MAX = 60
 
 const CLUSTER_META: Record<
   string,
@@ -75,6 +80,16 @@ const CLUSTER_META: Record<
     description: 'Communication, stakeholder engagement, ethics, decision-making under uncertainty',
   },
 }
+
+interface ProfileForm {
+  fullName: string
+  designation: string
+  station: string
+  yearsExp: string
+  education: string
+}
+
+type ClusterLevels = Record<string, number>
 
 // ── Step indicator ────────────────────────────────────────────────────────────
 
@@ -131,35 +146,76 @@ function StepIndicator({ current }: { current: number }) {
 
 // ── Step 1: Profile ───────────────────────────────────────────────────────────
 
+/**
+ * Validation mirrors the server's Pydantic constraints rather than approximating
+ * them, so a rejection is explained next to the field that caused it instead of
+ * arriving as an opaque 422.
+ */
+function validateProfile(form: ProfileForm): Partial<Record<keyof ProfileForm, string>> {
+  const errors: Partial<Record<keyof ProfileForm, string>> = {}
+
+  const name = form.fullName.trim()
+  if (name.length < NAME_MIN) errors.fullName = `At least ${NAME_MIN} characters.`
+  else if (name.length > NAME_MAX) errors.fullName = `At most ${NAME_MAX} characters.`
+
+  const years = form.yearsExp.trim()
+  if (years !== '') {
+    const parsed = Number.parseInt(years, 10)
+    if (Number.isNaN(parsed)) errors.yearsExp = 'Enter a whole number of years.'
+    else if (parsed < YEARS_MIN || parsed > YEARS_MAX)
+      errors.yearsExp = `Between ${YEARS_MIN} and ${YEARS_MAX}.`
+  }
+
+  if (form.designation.trim().length > NAME_MAX)
+    errors.designation = `At most ${NAME_MAX} characters.`
+  if (form.station.trim().length > NAME_MAX) errors.station = `At most ${NAME_MAX} characters.`
+  if (form.education.trim().length > 240) errors.education = 'At most 240 characters.'
+
+  return errors
+}
+
 function StepProfile({
+  form,
+  setForm,
   onNext,
 }: {
+  form: ProfileForm
+  setForm: Dispatch<SetStateAction<ProfileForm>>
   onNext: () => void
 }) {
-  const { user } = useAuth()
+  const { user, applyProfile } = useAuth()
   const updateProfile = useUpdateProfile()
   const profile = user?.profile
 
-  const [fullName, setFullName] = useState(profile?.full_name ?? '')
-  const [designation, setDesignation] = useState(profile?.designation ?? '')
-  const [department] = useState(
-    profile?.department ?? 'Ministry of Statistics and Programme Implementation',
-  )
-  const [station, setStation] = useState(profile?.station ?? '')
-  const [yearsExp, setYearsExp] = useState(String(profile?.years_experience ?? 0))
-  const [education, setEducation] = useState(profile?.education ?? '')
+  const department = profile?.department ?? 'Ministry of Statistics and Programme Implementation'
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ProfileForm, string>>>({})
   const [error, setError] = useState<string | null>(null)
+
+  function set<K extends keyof ProfileForm>(key: K, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    setFieldErrors((prev) => ({ ...prev, [key]: undefined }))
+  }
 
   async function handleNext() {
     setError(null)
+    const errors = validateProfile(form)
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
+
+    const years = form.yearsExp.trim()
     try {
-      await updateProfile.mutateAsync({
-        full_name: fullName.trim() || undefined,
-        designation: designation.trim() || undefined,
-        station: station.trim() || undefined,
-        years_experience: parseInt(yearsExp) || 0,
-        education: education.trim() || undefined,
+      const saved = await updateProfile.mutateAsync({
+        full_name: form.fullName.trim(),
+        designation: form.designation.trim() || undefined,
+        station: form.station.trim() || undefined,
+        years_experience: years === '' ? undefined : Number.parseInt(years, 10),
+        education: form.education.trim() || undefined,
       })
+      // AuthProvider holds the profile in state, not in the query cache, so the
+      // saved record has to be folded back in or the shell keeps the old name.
+      applyProfile(saved)
       onNext()
     } catch {
       setError('Could not save your profile. Please try again.')
@@ -168,7 +224,10 @@ function StepProfile({
 
   const inputClass =
     'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-14 text-slate-900 focus:border-[#F58220] focus:outline-none focus:ring-2 focus:ring-[#F58220]/20 transition-colors'
+  const errorInputClass =
+    'w-full rounded-lg border border-red-300 bg-white px-3 py-2.5 text-14 text-slate-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200 transition-colors'
   const labelClass = 'block text-12 font-semibold text-slate-700 mb-1.5'
+  const hintClass = 'mt-1 text-11 font-medium text-red-600'
 
   return (
     <div className="space-y-5">
@@ -179,11 +238,19 @@ function StepProfile({
           </label>
           <input
             id="ob-fullname"
-            className={inputClass}
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            className={fieldErrors.fullName ? errorInputClass : inputClass}
+            value={form.fullName}
+            onChange={(e) => set('fullName', e.target.value)}
             placeholder="Your full name"
+            maxLength={NAME_MAX}
+            aria-invalid={Boolean(fieldErrors.fullName)}
+            aria-describedby={fieldErrors.fullName ? 'ob-fullname-error' : undefined}
           />
+          {fieldErrors.fullName && (
+            <p id="ob-fullname-error" className={hintClass}>
+              {fieldErrors.fullName}
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor="ob-designation" className={labelClass}>
@@ -191,11 +258,13 @@ function StepProfile({
           </label>
           <input
             id="ob-designation"
-            className={inputClass}
-            value={designation}
-            onChange={(e) => setDesignation(e.target.value)}
+            className={fieldErrors.designation ? errorInputClass : inputClass}
+            value={form.designation}
+            onChange={(e) => set('designation', e.target.value)}
             placeholder="e.g. Statistical Officer"
+            maxLength={NAME_MAX}
           />
+          {fieldErrors.designation && <p className={hintClass}>{fieldErrors.designation}</p>}
         </div>
       </div>
 
@@ -220,11 +289,13 @@ function StepProfile({
           </label>
           <input
             id="ob-station"
-            className={inputClass}
-            value={station}
-            onChange={(e) => setStation(e.target.value)}
+            className={fieldErrors.station ? errorInputClass : inputClass}
+            value={form.station}
+            onChange={(e) => set('station', e.target.value)}
             placeholder="e.g. New Delhi"
+            maxLength={NAME_MAX}
           />
+          {fieldErrors.station && <p className={hintClass}>{fieldErrors.station}</p>}
         </div>
         <div>
           <label htmlFor="ob-exp" className={labelClass}>
@@ -234,12 +305,21 @@ function StepProfile({
           <input
             id="ob-exp"
             type="number"
-            min={0}
-            max={60}
-            className={inputClass}
-            value={yearsExp}
-            onChange={(e) => setYearsExp(e.target.value)}
+            inputMode="numeric"
+            min={YEARS_MIN}
+            max={YEARS_MAX}
+            step={1}
+            className={fieldErrors.yearsExp ? errorInputClass : inputClass}
+            value={form.yearsExp}
+            onChange={(e) => set('yearsExp', e.target.value)}
+            aria-invalid={Boolean(fieldErrors.yearsExp)}
+            aria-describedby={fieldErrors.yearsExp ? 'ob-exp-error' : undefined}
           />
+          {fieldErrors.yearsExp && (
+            <p id="ob-exp-error" className={hintClass}>
+              {fieldErrors.yearsExp}
+            </p>
+          )}
         </div>
       </div>
 
@@ -250,11 +330,13 @@ function StepProfile({
         </label>
         <input
           id="ob-education"
-          className={inputClass}
-          value={education}
-          onChange={(e) => setEducation(e.target.value)}
+          className={fieldErrors.education ? errorInputClass : inputClass}
+          value={form.education}
+          onChange={(e) => set('education', e.target.value)}
           placeholder="e.g. M.Sc. Statistics, IIT Delhi"
+          maxLength={240}
         />
+        {fieldErrors.education && <p className={hintClass}>{fieldErrors.education}</p>}
       </div>
 
       {/* Role info (read-only) */}
@@ -278,7 +360,7 @@ function StepProfile({
       <button
         type="button"
         onClick={handleNext}
-        disabled={!fullName.trim() || updateProfile.isPending}
+        disabled={updateProfile.isPending}
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#0B3060] py-3 text-14 font-bold text-white shadow-md hover:bg-[#F58220] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {updateProfile.isPending ? (
@@ -296,28 +378,32 @@ function StepProfile({
 
 // ── Step 2: Competency Self-Assessment ────────────────────────────────────────
 
-function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  const { data: competencies, isLoading } = useCompetencies()
+function StepAssessment({
+  levels,
+  setLevels,
+  onNext,
+  onBack,
+}: {
+  levels: ClusterLevels
+  setLevels: Dispatch<SetStateAction<ClusterLevels>>
+  onNext: () => void
+  onBack: () => void
+}) {
+  const { data: competencies, isLoading, isError, refetch } = useCompetencies()
   const declareBatch = useDeclareBatch()
   const [error, setError] = useState<string | null>(null)
 
-  // Group by cluster
-
-  const [clusterLevels, setClusterLevels] = useState<Record<string, number>>({
-    STATISTICAL: 1,
-    TECHNICAL: 1,
-    DIGITAL_GOVERNANCE: 1,
-    BEHAVIOURAL: 1,
-  })
-
   async function handleNext() {
     setError(null)
-    if (!competencies) return
+    if (!competencies || competencies.length === 0) {
+      setError('The competency framework has not loaded, so nothing can be saved yet.')
+      return
+    }
 
-    // Build batch: every competency in a cluster gets its cluster's level
+    // Every competency in a cluster inherits its cluster's declared level.
     const declarations = competencies.map((c) => ({
       competency_id: c.id,
-      level: clusterLevels[c.cluster] ?? 1,
+      level: levels[c.cluster] ?? 1,
       note: 'Initial self-declaration (onboarding)',
     }))
 
@@ -337,15 +423,46 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
     )
   }
 
+  // The sliders are built from a static cluster list, so without this branch the
+  // form would render perfectly and the Continue button would do nothing at all.
+  if (isError || !competencies) {
+    return (
+      <div className="space-y-4">
+        <ErrorNote>
+          The competency framework could not be loaded, so your self-assessment cannot be saved
+          against it yet.
+        </ErrorNote>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 rounded-xl border border-slate-300 py-3 text-14 font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            ← Back
+          </button>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="flex-[2] rounded-xl bg-[#0B3060] py-3 text-14 font-bold text-white hover:bg-[#F58220] transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-13 text-slate-600 leading-relaxed bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-        <span className="font-bold text-amber-800">Self-declaration</span> — rate your current level in each domain. This is your starting point; formal assessments will refine it. All declarations are stored at low confidence (0.25) and will be updated as you complete quizzes.
+        <span className="font-bold text-amber-800">Self-declaration</span> — rate your current level
+        in each domain. This is your starting point; formal assessments will refine it. All
+        declarations are stored at low confidence (0.25) and will be updated as you complete quizzes.
       </p>
 
       {Object.entries(CLUSTER_META).map(([cluster, meta]) => {
         const Icon = meta.icon
-        const level = clusterLevels[cluster] ?? 1
+        const level = levels[cluster] ?? 1
         return (
           <div
             key={cluster}
@@ -366,9 +483,7 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
                 <p className="text-20 font-black tabular" style={{ color: meta.color }}>
                   {level}
                 </p>
-                <p className="text-10 font-mono text-slate-400 whitespace-nowrap">
-                  / 4 FRAC
-                </p>
+                <p className="text-10 font-mono text-slate-400 whitespace-nowrap">/ 4 FRAC</p>
               </div>
             </div>
 
@@ -381,10 +496,7 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
                 step={1}
                 value={level}
                 onChange={(e) =>
-                  setClusterLevels((prev) => ({
-                    ...prev,
-                    [cluster]: Number(e.target.value),
-                  }))
+                  setLevels((prev) => ({ ...prev, [cluster]: Number(e.target.value) }))
                 }
                 className="w-full accent-current h-2 rounded-full cursor-pointer"
                 style={{ accentColor: meta.color }}
@@ -394,9 +506,7 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
                 {[0, 1, 2, 3, 4].map((l) => (
                   <span
                     key={l}
-                    className={`text-10 font-mono ${
-                      l === level ? 'font-black' : 'text-slate-400'
-                    }`}
+                    className={`text-10 font-mono ${l === level ? 'font-black' : 'text-slate-400'}`}
                     style={l === level ? { color: meta.color } : {}}
                   >
                     {l}
@@ -407,7 +517,7 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
                 className="text-12 font-semibold text-center py-1.5 rounded-lg"
                 style={{ color: meta.color, backgroundColor: meta.color + '15' }}
               >
-                {FRAC_LABELS[level]}
+                {fracLabel(level)}
               </p>
             </div>
           </div>
@@ -446,30 +556,57 @@ function StepAssessment({ onNext, onBack }: { onNext: () => void; onBack: () => 
 
 // ── Step 3: Generating Recommendations ───────────────────────────────────────
 
-function StepRecommendations({ userId }: { userId: string; onBack: () => void }) {
-  const navigate = useNavigate()
+function StepRecommendations() {
   const generate = useGenerateRecommendations()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
+  // StrictMode mounts effects twice in development. Without this the wizard
+  // would fire two generation runs — two recommender passes, two LLM
+  // explanation passes and two batches in the ledger.
+  const started = useRef(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /**
+   * Leave by reloading rather than by client-side navigation.
+   *
+   * The route guards read `onboarded` from the session, which is derived from
+   * the evidence ledger. Step 2 has already written those rows, so the copy in
+   * memory is stale in exactly the direction that matters: a client-side
+   * navigation renders once with the old value and the guard bounces straight
+   * back into the wizard. Patching the session in place instead races the
+   * render — whichever of the two redirects lands first decides the
+   * destination. A reload re-reads /auth/me from scratch and has no such
+   * ordering to get wrong. It happens once in an officer's lifetime, behind a
+   * success animation, so the cost is nothing and the determinism is worth it.
+   */
+  function leaveForRecommendations() {
+    window.location.assign('/recommendations')
+  }
+
   useEffect(() => {
-    // Auto-trigger on mount
+    if (started.current) return
+    started.current = true
+
     async function run() {
       try {
         await generate.mutateAsync()
-        markOnboarded(userId)
         setDone(true)
-        // Brief pause so the success state is visible
-        setTimeout(() => navigate('/recommendations', { replace: true }), 1800)
+        // Brief pause so the success state is visible.
+        timer.current = setTimeout(leaveForRecommendations, 1800)
       } catch {
         setError(
           'Could not generate recommendations right now. You can try again from the Recommendations page.',
         )
-        // Still mark onboarded so the wizard doesn't loop
-        markOnboarded(userId)
       }
     }
     void run()
+
+    // Without this the pending navigation still fires after the user has
+    // pressed Back, yanking them out of wherever they went.
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -481,14 +618,13 @@ function StepRecommendations({ userId }: { userId: string; onBack: () => void })
         </div>
         <h3 className="text-18 font-bold text-slate-900">Almost there!</h3>
         <p className="text-14 text-slate-600 max-w-sm mx-auto">
-          Your profile and skill levels were saved. The AI recommender will run when you visit the Recommendations page.
+          Your profile and skill levels were saved. The AI recommender will run when you visit the
+          Recommendations page.
         </p>
         <ErrorNote>{error}</ErrorNote>
         <button
           type="button"
-          onClick={() => {
-            navigate('/recommendations', { replace: true })
-          }}
+          onClick={leaveForRecommendations}
           className="w-full rounded-xl bg-[#0B3060] py-3 text-14 font-bold text-white hover:bg-[#F58220] transition-colors"
         >
           Go to Recommendations →
@@ -559,6 +695,21 @@ export default function Onboarding() {
   const { user } = useAuth()
   const [step, setStep] = useState(1)
 
+  const profile = user?.profile
+  const [form, setForm] = useState<ProfileForm>(() => ({
+    fullName: profile?.full_name ?? '',
+    designation: profile?.designation ?? '',
+    station: profile?.station ?? '',
+    yearsExp: String(profile?.years_experience ?? 0),
+    education: profile?.education ?? '',
+  }))
+  const [clusterLevels, setClusterLevels] = useState<ClusterLevels>({
+    STATISTICAL: 1,
+    TECHNICAL: 1,
+    DIGITAL_GOVERNANCE: 1,
+    BEHAVIOURAL: 1,
+  })
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F0F4FF] via-[#F8FAFC] to-white flex flex-col">
       {/* Tricolor strip */}
@@ -569,7 +720,10 @@ export default function Onboarding() {
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B3060] to-[#154399] shadow">
             <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current text-white" aria-hidden="true">
-              <path d="M12 2L14.5 8.5L21.5 9.5L16.5 14.5L18 21.5L12 18L6 21.5L7.5 14.5L2.5 9.5L9.5 8.5L12 2Z" fill="#F58220" />
+              <path
+                d="M12 2L14.5 8.5L21.5 9.5L16.5 14.5L18 21.5L12 18L6 21.5L7.5 14.5L2.5 9.5L9.5 8.5L12 2Z"
+                fill="#F58220"
+              />
               <circle cx="12" cy="13" r="3.5" fill="#FFFFFF" />
               <circle cx="12" cy="13" r="1.5" fill="#0B3060" />
             </svg>
@@ -627,18 +781,21 @@ export default function Onboarding() {
 
         {/* White card content */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
-          {step === 1 && <StepProfile onNext={() => setStep(2)} />}
+          {step === 1 && <StepProfile form={form} setForm={setForm} onNext={() => setStep(2)} />}
           {step === 2 && (
-            <StepAssessment onNext={() => setStep(3)} onBack={() => setStep(1)} />
+            <StepAssessment
+              levels={clusterLevels}
+              setLevels={setClusterLevels}
+              onNext={() => setStep(3)}
+              onBack={() => setStep(1)}
+            />
           )}
-          {step === 3 && user && (
-            <StepRecommendations userId={user.id} onBack={() => setStep(2)} />
-          )}
+          {step === 3 && user && <StepRecommendations />}
         </div>
 
         {/* Footer note */}
         <p className="mt-5 text-center text-11 text-slate-400">
-          🔒 Your data is secured by MoSPI's FRAC competency ledger · SIH 2026
+          Your data is secured by MoSPI's FRAC competency ledger · SIH 2026
         </p>
       </main>
     </div>

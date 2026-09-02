@@ -43,7 +43,7 @@ Four processes. The first three are required.
 ### 0 · Prerequisites
 
 Python **3.11** (not 3.14 — FastEmbed's ONNX runtime has no 3.14 wheels),
-Node 18+. (No Docker required).
+Node 18+, and a local PostgreSQL 16+ server with the pgvector extension.
 
 ### 1 · Database (Native PostgreSQL + pgvector)
 
