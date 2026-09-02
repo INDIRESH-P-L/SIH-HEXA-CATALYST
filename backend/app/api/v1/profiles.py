@@ -83,3 +83,54 @@ async def get_profile(
     if profile is None:
         raise NotFoundError("Profile not found.")
     return _to_read(profile)
+
+
+@router.post(
+    "/{user_id}/unblock",
+    summary="Unblock an officer's account (admin only)",
+)
+async def unblock_user(
+    user_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _actor: Annotated[CurrentUser, Depends(require_role("admin"))],
+) -> dict[str, str]:
+    profile = await session.get(Profile, user_id)
+    if profile is None:
+        raise NotFoundError("Profile not found.")
+    
+    profile.blocked_until = None
+    session.add(ActivityLog(
+        user_id=_actor.id,
+        action="profile.unblocked",
+        entity="profile",
+        entity_id=user_id,
+        extra={"reason": "Admin manually unblocked"},
+    ))
+    await session.commit()
+    return {"status": "success", "message": "Account has been unblocked"}
+
+@router.get(
+    "/all/blocked",
+    summary="List all currently blocked accounts (admin only)",
+)
+async def get_blocked_accounts(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _actor: Annotated[CurrentUser, Depends(require_role("admin"))],
+) -> list[dict]:
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    stmt = select(Profile).where(Profile.blocked_until > now)
+    result = await session.execute(stmt)
+    profiles = result.scalars().all()
+    
+    return [
+        {
+            "id": str(p.id),
+            "full_name": p.full_name,
+            "email": p.employee_code,
+            "blocked_until": p.blocked_until.isoformat() if p.blocked_until else None,
+        }
+        for p in profiles
+    ]
+

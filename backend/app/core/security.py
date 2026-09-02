@@ -229,6 +229,9 @@ async def get_current_user(
     profile = await session.get(Profile, claims.sub)
     if profile is None:
         raise AuthError("Authenticated user has no profile in this deployment.")
+        
+    if profile.blocked_until and profile.blocked_until > datetime.now(timezone.utc):
+        raise AuthError(f"Account is blocked until {profile.blocked_until.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     roles = await load_roles(session, claims.sub)
     user = CurrentUser(

@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN blocked_until TIMESTAMPTZ;

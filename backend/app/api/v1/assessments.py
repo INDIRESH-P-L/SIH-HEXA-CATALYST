@@ -639,3 +639,29 @@ async def initial_complete(
         recommendations_generated=rec_ok,
     )
 
+
+@router.post(
+    "/initial/terminate",
+    summary="Terminate the initial assessment due to a security violation and block the account",
+)
+async def initial_terminate(
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, str]:
+    from datetime import datetime, timedelta, timezone
+    from app.models.user import Profile
+
+    profile = await session.get(Profile, user.id)
+    if profile is not None:
+        profile.blocked_until = datetime.now(timezone.utc) + timedelta(hours=5)
+        session.add(ActivityLog(
+            user_id=user.id,
+            action="initial_assessment.terminated",
+            entity="profile",
+            entity_id=user.id,
+            extra={"reason": "Security violation limit exceeded (3 warnings)"},
+        ))
+        await session.commit()
+        
+    return {"status": "terminated", "message": "Account blocked for 5 hours"}
+

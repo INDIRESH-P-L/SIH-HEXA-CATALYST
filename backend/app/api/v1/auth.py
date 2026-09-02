@@ -141,6 +141,10 @@ async def login(
     profile = await session.get(Profile, session_dto.user_id)
     if profile is None:
         raise AuthError("That account has no profile in this deployment.")
+        
+    from datetime import datetime, timezone
+    if profile.blocked_until and profile.blocked_until > datetime.now(timezone.utc):
+        raise AuthError(f"Account is blocked until {profile.blocked_until.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     roles = await load_roles(session, session_dto.user_id)
     onboarded = await has_evidence_on_file(session, session_dto.user_id)

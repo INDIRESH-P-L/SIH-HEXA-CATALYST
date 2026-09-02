@@ -28,6 +28,7 @@ import {
   useInitialAssessmentTopics,
   useStartInitialAssessment,
   useSubmitAssessment,
+  useTerminateInitialAssessment,
 } from '../hooks'
 import type { InitialCompleteResponse, StartedAssessmentRef } from '../lib/types'
 
@@ -131,8 +132,8 @@ function IntroScreen({ onStart, loading }: { onStart: () => void; loading: boole
         </p>
         <ul className="text-13 text-amber-700 space-y-1 list-disc list-inside">
           <li>Scores are calculated by the system, not an AI</li>
-          <li>Do NOT leave the page mid-assessment</li>
-          <li>Each question has 4 options; select the best one</li>
+          <li>Screen sharing is required for proctoring</li>
+          <li>Do NOT switch tabs or leave full-screen mode</li>
         </ul>
       </div>
 
@@ -465,7 +466,7 @@ function ResultsScreen({ data }: { data: InitialCompleteResponse }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-type Phase = 'intro' | 'quiz' | 'processing' | 'results'
+type Phase = 'intro' | 'quiz' | 'processing' | 'results' | 'terminated'
 
 export default function InitialAssessment() {
   const { user } = useAuth()
@@ -475,9 +476,15 @@ export default function InitialAssessment() {
   const [submittedIds, setSubmittedIds] = useState<string[]>([])
   const [results, setResults] = useState<InitialCompleteResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  
+  // Proctoring state
+  const [warnings, setWarnings] = useState(0)
+  const [showWarning, setShowWarning] = useState(false)
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
 
   const startMutation = useStartInitialAssessment()
   const completeMutation = useCompleteInitialAssessment()
+  const terminateMutation = useTerminateInitialAssessment()
 
   useEffect(() => {
     if (user?.profile.initial_assessment_completed) {
@@ -485,13 +492,107 @@ export default function InitialAssessment() {
     }
   }, [user])
 
+  // Proctoring effect
+  useEffect(() => {
+    if (phase !== 'quiz') return
+
+    const handleViolation = () => {
+      setWarnings(w => {
+        const newW = w + 1
+        if (newW >= 3) {
+          terminateMutation.mutateAsync().catch(console.error)
+          setPhase('terminated')
+          if (document.fullscreenElement) {
+             document.exitFullscreen().catch(() => {})
+          }
+        } else {
+          setShowWarning(true)
+        }
+        return newW
+      })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleViolation()
+      }
+    }
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !showWarning) {
+        handleViolation()
+      }
+    }
+
+    const handleBlur = () => {
+      if (!showWarning) {
+        handleViolation()
+      }
+    }
+
+    const handleStreamEnded = () => {
+      if (!showWarning) {
+        handleViolation()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    window.addEventListener('blur', handleBlur)
+
+    if (screenStream) {
+      const track = screenStream.getVideoTracks()[0]
+      if (track) track.addEventListener('ended', handleStreamEnded)
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      window.removeEventListener('blur', handleBlur)
+      if (screenStream) {
+        const track = screenStream.getVideoTracks()[0]
+        if (track) track.removeEventListener('ended', handleStreamEnded)
+      }
+    }
+  }, [phase, showWarning, screenStream])
+
+  // Stop screen stream when phase changes to processing or terminated
+  useEffect(() => {
+    if (phase === 'processing' || phase === 'terminated' || phase === 'results') {
+       if (screenStream) {
+          screenStream.getTracks().forEach(t => t.stop())
+       }
+    }
+  }, [phase, screenStream])
+
   async function handleStart() {
+    setError(null)
+    
+    let stream: MediaStream | null = null
+    try {
+      // Request screen sharing
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+    } catch (e) {
+      setError('You must share your screen to take this proctored assessment.')
+      return
+    }
+
+    try {
+      await document.documentElement.requestFullscreen()
+    } catch (e) {
+      setError('Please allow full-screen mode to start the proctored assessment.')
+      stream.getTracks().forEach(t => t.stop())
+      return
+    }
+
     try {
       const data = await startMutation.mutateAsync()
       setAssessments(data.assessments)
+      setScreenStream(stream)
       setPhase('quiz')
     } catch {
       setError('Failed to start the assessment. Please refresh and try again.')
+      stream.getTracks().forEach(t => t.stop())
     }
   }
 
@@ -502,6 +603,9 @@ export default function InitialAssessment() {
     if (nextIdx < assessments.length) {
       setQuizIndex(nextIdx)
     } else {
+      if (document.fullscreenElement) {
+         document.exitFullscreen().catch(() => {})
+      }
       setPhase('processing')
       try {
         const completeData = await completeMutation.mutateAsync(newSubmitted)
@@ -515,6 +619,11 @@ export default function InitialAssessment() {
   }
 
   const totalQuestions = assessments.reduce((s, a) => s + a.question_count, 0)
+
+  function acknowledgeWarning() {
+    setShowWarning(false)
+    document.documentElement.requestFullscreen().catch(() => {})
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F0F4FF] via-[#F8FAFC] to-white flex flex-col">
@@ -558,6 +667,31 @@ export default function InitialAssessment() {
           />
         )}
 
+        {showWarning && phase === 'quiz' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl text-center space-y-4">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle size={32} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-18 font-black text-slate-900">Security Warning</h3>
+                <p className="text-14 text-slate-500 mt-2">
+                  You have switched tabs, lost window focus, exited full-screen, or stopped screen sharing. This is a proctored assessment.
+                </p>
+                <p className="text-14 font-bold text-red-600 mt-2">
+                  Warning {warnings} of 3
+                </p>
+              </div>
+              <button
+                onClick={acknowledgeWarning}
+                className="w-full rounded-xl bg-red-600 py-3 text-14 font-bold text-white hover:bg-red-700 transition-colors"
+              >
+                Acknowledge & Return
+              </button>
+            </div>
+          </div>
+        )}
+
         {phase === 'processing' && <ProcessingScreen />}
 
         {phase === 'results' && results && <ResultsScreen data={results} />}
@@ -569,6 +703,25 @@ export default function InitialAssessment() {
             <p className="text-14 text-slate-500">Your scores have been saved.</p>
             <button onClick={() => window.location.assign('/recommendations')} className="w-full rounded-2xl bg-[#0B3060] py-3.5 text-14 font-bold text-white">
               View Recommendations
+            </button>
+          </div>
+        )}
+
+        {phase === 'terminated' && (
+          <div className="text-center space-y-4 py-12">
+            <XCircle size={48} className="text-red-500 mx-auto" />
+            <h2 className="text-20 font-black text-slate-900">Assessment Terminated</h2>
+            <p className="text-14 text-slate-500 mt-2">
+              Your assessment was terminated because you exceeded the maximum allowed security warnings (tab switches, focus loss, or leaving full-screen).
+            </p>
+            <p className="text-14 font-bold text-red-600 mt-4">
+              Your account has been blocked for 5 hours.
+            </p>
+            <button
+              onClick={() => window.location.assign('/')}
+              className="mt-4 rounded-xl bg-slate-200 px-6 py-2.5 text-14 font-semibold text-slate-700 hover:bg-slate-300 transition-colors"
+            >
+              Back to Dashboard
             </button>
           </div>
         )}

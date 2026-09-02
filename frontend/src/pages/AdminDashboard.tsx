@@ -20,6 +20,8 @@ import {
   useEventStream,
   useRebuildMarts,
   useTrainingEffectiveness,
+  useBlockedAccounts,
+  useUnblockUser,
 } from '../hooks'
 import { formatDateTime } from '../lib/format'
 import type { CompetencyGapFrequency, TrainingEffectivenessRow } from '../lib/types'
@@ -30,6 +32,8 @@ export default function AdminDashboard() {
   const effectiveness = useTrainingEffectiveness()
   const events = useEventStream()
   const rebuild = useRebuildMarts()
+  const blocked = useBlockedAccounts()
+  const unblock = useUnblockUser()
 
   const gapColumns: Column<CompetencyGapFrequency>[] = [
     {
@@ -196,6 +200,56 @@ export default function AdminDashboard() {
           </p>
         </Card>
       )}
+
+      {/* Blocked Accounts Management */}
+      <Card className="mb-4" label="User Access Management (Blocked Accounts)">
+        {blocked.isLoading && <Skeleton className="h-24 w-full" />}
+        {blocked.data && (
+          <DataTable
+            columns={[
+              {
+                key: 'user',
+                header: 'User',
+                render: (row) => (
+                  <div>
+                    <span className="text-ink font-semibold">{row.full_name}</span>
+                    <span className="ml-2 font-mono text-11 text-ink-3">{row.email}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'blocked_until',
+                header: 'Blocked Until',
+                render: (row) => (
+                  <span className="font-mono text-12 text-red-600">
+                    {formatDateTime(row.blocked_until)}
+                  </span>
+                ),
+                width: '200px',
+              },
+              {
+                key: 'action',
+                header: 'Action',
+                render: (row) => (
+                  <Button
+                    variant="secondary"
+                    onClick={() => unblock.mutate(row.id)}
+                    loading={unblock.isPending}
+                    className="h-7 text-11"
+                  >
+                    Unblock Now
+                  </Button>
+                ),
+                width: '120px',
+              },
+            ]}
+            rows={blocked.data}
+            keyOf={(row) => row.id}
+            caption="Users currently locked out due to security violations during assessments."
+            empty={<EmptyState icon={Activity} title="No users are currently blocked." />}
+          />
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <Card className="lg:col-span-7" label="Gap frequency by competency">

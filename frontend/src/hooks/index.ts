@@ -421,13 +421,17 @@ export function useStartInitialAssessment() {
 export function useCompleteInitialAssessment() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (assessmentIds: string[]) =>
-      (
-        await api.post<InitialCompleteResponse>(API.v1('/assessments/initial/complete'), {
-          assessment_ids: assessmentIds,
-        })
-      ).data,
+    mutationFn: async (assessmentIds: string[]) => {
+      const { data } = await api.post<InitialCompleteResponse>(
+        API.v1('/assessments/initial/complete'),
+        { assessment_ids: assessmentIds },
+      )
+      return data
+    },
     onSuccess: () => {
+      // Invalidate both /me and /auth/me to fetch the updated initial_assessment_completed flag
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+      void queryClient.invalidateQueries({ queryKey: ['assessments', 'me'] })
       // The assessment wrote real evidence — everything downstream is stale.
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
       void queryClient.invalidateQueries({ queryKey: ['gaps'] })
@@ -438,3 +442,44 @@ export function useCompleteInitialAssessment() {
   })
 }
 
+export function useTerminateInitialAssessment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ status: string; message: string }>(
+        API.v1('/assessments/initial/terminate')
+      )
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+export function useBlockedAccounts() {
+  return useQuery({
+    queryKey: ['blockedAccounts'],
+    queryFn: async () => {
+      const { data } = await api.get<{ id: string; full_name: string; email: string; blocked_until: string }[]>(
+        API.v1('/profiles/all/blocked')
+      )
+      return data
+    },
+  })
+}
+
+export function useUnblockUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { data } = await api.post<{ status: string; message: string }>(
+        API.v1(`/profiles/${userId}/unblock`)
+      )
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['blockedAccounts'] })
+    },
+  })
+}
