@@ -69,8 +69,8 @@ Three claims hold this together:
 ┌──────▼──────────────┐  ┌──────▼───────────────┐  ┌───────▼──────────────┐
 │ POSTGRESQL          │  │ MOCK iGOT / NSSTA    │  │ GROQ API             │
 │ + pgvector (HNSW)   │  │ CATALOGUE  :8001     │  │ gpt-oss-20b (MCQ)    │
-│ + GIN (tsvector)    │  │ separate process     │  │ llama-3.3-70b (prose)│
-│ + RLS · 32 tables   │  │ 41 offerings         │  │ llama-3.1-8b (fallbk)│
+│ + GIN (tsvector)    │  │ separate process     │  │ gpt-oss-120b (prose) │
+│ + RLS · 32 tables   │  │ 41 offerings         │  │ gpt-oss-20b (fallbk) │
 └─────────────────────┘  └──────────────────────┘  └──────────────────────┘
 
 FastEmbed (bge-small-en-v1.5, 384-dim, ONNX, CPU) runs IN-PROCESS.
@@ -518,14 +518,14 @@ assessment is submitted — the same row that changed the level adds the point.
 | Competency → course matching | bge-small embeddings + pgvector HNSW | embeddings, computed locally |
 | Retrieval fusion | reciprocal rank | **No** |
 | Recommendation ranking and sequencing | seven-term formula, DAG, calendar | **No** |
-| Recommendation explanation | Groq llama-3.3-70b on anonymised context | **Yes** |
+| Recommendation explanation | Groq gpt-oss-120b on anonymised context | **Yes** |
 | Question generation | Groq gpt-oss-20b, strict JSON schema | **Yes** |
 | Question validation | ten deterministic checks | **No** |
 | Quiz scoring | difficulty-weighted arithmetic | **No** |
 | Competency level update | SME cut-scores | **No** |
 | Gap, band, priority | arithmetic | **No** |
 | Weak-topic identification | weighted frequency count | **No** |
-| Quiz feedback prose | Groq llama-3.3-70b, after scoring | **Yes** |
+| Quiz feedback prose | Groq gpt-oss-120b, after scoring | **Yes** |
 | Assistant answers | Groq, over retrieved approved passages, cited | **Yes** |
 | Every dashboard figure | SQL aggregate | **No** |
 
@@ -541,7 +541,7 @@ the `groq` package, which makes the controls impossible to bypass by accident:
 1. **Cache** — `sha256(prompt_version + model + purpose + system + prompt)`.
    This is what makes the demonstration work with the network disconnected.
 2. **Retry** — one retry on rate-limit after 2 s, then a fall back to
-   `llama-3.1-8b-instant`, which has separate headroom.
+   `MODEL_FALLBACK` (`openai/gpt-oss-20b`), which has separate headroom.
 3. **Degrade** — total failure raises `LLMUnavailable`; every caller substitutes
    a deterministic template, and the interface labels it **"Template (AI
    unavailable)"** rather than passing it off as model output.

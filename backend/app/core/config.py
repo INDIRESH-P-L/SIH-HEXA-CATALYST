@@ -38,7 +38,14 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # ── data seam ────────────────────────────────────────────────────────────
-    DB_URL: str = "postgresql+asyncpg://sip:sip@localhost:5433/sip"
+    #
+    # There is no local-PostgreSQL default. The platform runs against Supabase,
+    # and a default pointing at localhost is worse than none: on a machine that
+    # happens to run Postgres it connects to the wrong database and reports
+    # success. ``.invalid`` is reserved by RFC 2606 and can never resolve, so an
+    # unset DB_URL fails immediately and says why, while still letting the unit
+    # tests import the app without a .env on a fresh clone.
+    DB_URL: str = "postgresql+asyncpg://unset:unset@db-url-not-configured.invalid:5432/unset"
     DB_ECHO: bool = False
 
     # ── auth seam ────────────────────────────────────────────────────────────
@@ -71,9 +78,13 @@ class Settings(BaseSettings):
     LLM_ENABLED: bool = True
     LLM_TIMEOUT_S: float = 30.0
     LLM_CACHE_ENABLED: bool = True
+    # Groq retired the Llama 3.x hosted models. The GPT-OSS family replaces
+    # them: 120b writes the prose, 20b generates MCQs because it is one of the
+    # models that honours strict ``json_schema`` (see ai/schemas_json.py), and
+    # 20b doubles as the rate-limit fallback.
     MODEL_MCQ: str = "openai/gpt-oss-20b"
-    MODEL_TEXT: str = "llama-3.3-70b-versatile"
-    MODEL_FALLBACK: str = "llama-3.1-8b-instant"
+    MODEL_TEXT: str = "openai/gpt-oss-120b"
+    MODEL_FALLBACK: str = "openai/gpt-oss-20b"
 
     # ── embeddings ───────────────────────────────────────────────────────────
     EMBED_MODEL: str = "BAAI/bge-small-en-v1.5"

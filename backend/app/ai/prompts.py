@@ -44,7 +44,7 @@ SYSTEM_ASSISTANT = (
     "If the passages do not contain the answer, you say so."
 )
 
-# ── Recommendation explanation (llama-3.3-70b-versatile, plain text) ─────────
+# ── Recommendation explanation (MODEL_TEXT, plain text) ─────────────────────
 
 RECOMMENDATION = """A {job_role_title} needs level {required_level} in {competency_name} \
 ({frac_required} on the FRAC scale). They are currently assessed at level \
@@ -62,7 +62,7 @@ course is a sensible next step for them. Be concrete about what closing this \
 gap enables in their work. Do not use bullet points, headings, or a greeting. \
 Do not mention that you are an AI. Start directly with the substance."""
 
-# ── Quiz feedback (llama-3.3-70b-versatile, plain text) ─────────────────────
+# ── Quiz feedback (MODEL_TEXT, plain text) ──────────────────────────────────
 
 FEEDBACK = """An officer completed a {total_questions}-question assessment in \
 {competency_name} and scored {score}% ({correct_count} correct).

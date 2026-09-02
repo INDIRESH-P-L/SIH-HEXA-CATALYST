@@ -136,7 +136,7 @@ def test_cache_key_is_stable_and_input_sensitive() -> None:
 
 
 def test_mcq_generation_routes_to_the_structured_output_model() -> None:
-    """Strict JSON schema works on GPT-OSS, not on llama-3.3-70b."""
+    """MCQ generation routes to the strict-JSON-capable model."""
     assert llm_client.model_for("mcq_generation") == settings.MODEL_MCQ
     assert llm_client.model_for("explanation") == settings.MODEL_TEXT
     assert llm_client.model_for("feedback") == settings.MODEL_TEXT

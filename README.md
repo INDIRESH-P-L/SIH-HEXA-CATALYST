@@ -43,15 +43,16 @@ Four processes. The first three are required.
 ### 0 · Prerequisites
 
 Python **3.11** (not 3.14 — FastEmbed's ONNX runtime has no 3.14 wheels),
-Node 18+, and a local PostgreSQL 16+ server with the pgvector extension.
+Node 18+, and a Supabase project.
 
-### 1 · Database (Native PostgreSQL + pgvector)
+### 1 · Database (Supabase Postgres + pgvector)
 
-```bash
-./scripts/start_local_db.sh
-```
+In the Supabase dashboard, enable the `vector` extension under **Database →
+Extensions**, then take the connection string from **Project Settings →
+Database → Connection string → Session pooler**.
 
-Runs native PostgreSQL 18 with pgvector on host port **5434**.
+Use the **Supavisor pooler**, not `db.<ref>.supabase.co:5432` — the direct
+endpoint is IPv6-only and times out on most laptops and campus networks.
 
 ### 2 · Backend
 
@@ -62,6 +63,12 @@ py -3.11 -m venv .venv
 # .venv/bin/python -m pip install -r requirements-dev.txt     # Unix
 cp ../.env.example .env
 ```
+
+Fill in `.env`: `DB_URL` with the pooler string above (changing the scheme to
+`postgresql+asyncpg://`), plus `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_JWT_SECRET`. `GROQ_API_KEY` is
+optional — without it every AI feature falls back to a deterministic template
+labelled "Template (AI unavailable)" and the application keeps working.
 
 Then, from the repository root:
 
@@ -224,29 +231,34 @@ policies prohibit AGPL dependencies. pdfplumber (MIT) does the same job.
 
 ---
 
-## Deploying against Supabase
+## The seams
 
-The platform runs on local PostgreSQL by default and needs no credentials. To
-switch to the Supabase stack, change environment variables only:
+Three subsystems sit behind a `typing.Protocol` with two implementations each,
+selected by one environment variable. The platform ships configured for
+Supabase; the second implementation of each seam is what makes that a
+configuration choice rather than a rewrite.
 
-```ini
-AUTH_MODE=supabase
-STORAGE_MODE=supabase
-SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-SUPABASE_JWT_SECRET=...
-DB_URL=postgresql+asyncpg://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
-```
+| Seam | `AUTH_MODE` / `STORAGE_MODE` / `CATALOGUE_PROVIDER` | What changes |
+|---|---|---|
+| Auth | `supabase` → GoTrue admin + password grant · `local` → `auth.users` shim, PBKDF2-SHA256, HS256 minted in-process | Registration and login only |
+| Storage | `supabase` → Storage bucket · `local` → `backend/storage/`, same key layout | Where the bytes land |
+| Catalogue | `mock` → the port-8001 service · `igot` → raises `NotConfiguredError` | Which HTTP host answers |
 
-Use the **Supavisor pooler**, not `db.<ref>.supabase.co:5432` — the direct
-endpoint is IPv6-only and times out on most laptops and campus networks. Session
-mode (5432) is right for a laptop-hosted demo. Transaction mode (6543) is
-detected automatically and switches the engine to `NullPool` with the
+Token *verification* is deliberately not part of the seam: `core.security.
+decode_token` verifies HS256 against either `SUPABASE_JWT_SECRET` or
+`LOCAL_JWT_SECRET` and checks `iss`/`aud`. That one function is the SSO-ready
+point — swapping in Parichay OIDC changes the issuer and the claims mapping,
+nothing else. We show the seam; we do not claim an SSO integration.
+
+Session mode (port 5432) is right for a laptop-hosted demo. Transaction mode
+(6543) is detected automatically and switches the engine to `NullPool` with the
 prepared-statement cache disabled.
 
-The migration runner skips the local auth shim in Supabase mode, because GoTrue
-already owns that schema. `001_initial_schema.sql` is unchanged between the two.
+The migration runner skips `000_local_auth_shim.sql` in Supabase mode, because
+GoTrue already owns that schema. `001_initial_schema.sql` is unchanged between
+the two. Seeding works in either mode — under Supabase the seven demo officers
+are created as real, pre-confirmed GoTrue accounts through the admin API, and
+everything downstream is keyed on the returned user id.
 
 ---
 

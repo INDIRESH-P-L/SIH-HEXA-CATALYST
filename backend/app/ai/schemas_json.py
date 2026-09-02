@@ -6,8 +6,8 @@ Miss either and the request is rejected. Streaming and tool use are not
 supported alongside structured outputs.
 
 Only ``openai/gpt-oss-20b`` (and Qwen 3) honour this in the model set used
-here; ``llama-3.3-70b-versatile`` does not, which is why MCQ generation is
-routed to GPT-OSS.
+here — not every hosted model does — which is why MCQ generation is routed to
+GPT-OSS.
 """
 
 from __future__ import annotations

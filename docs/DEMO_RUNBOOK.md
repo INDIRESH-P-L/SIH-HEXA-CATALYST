@@ -7,8 +7,8 @@ Target: **4–4.5 minutes**. Rehearse it twice, once with the network disconnect
 ## Before you start
 
 ```bash
-# Start PostgreSQL (or use Supabase cloud DB in backend/.env)
-./scripts/start_local_db.sh
+# The database is Supabase — nothing to start locally. Confirm backend/.env
+# has DB_URL pointing at the Supavisor session pooler before you begin.
 cd mock-catalogue && uvicorn main:app --port 8001
 cd backend && uvicorn app.main:app --reload
 cd frontend && npm run dev

@@ -2,8 +2,8 @@
 
 Model choice is not incidental. Constrained decoding — where the provider
 guarantees the response parses against the supplied schema — is available on
-GPT-OSS and Qwen 3, and *not* on llama-3.3-70b-versatile. Generation therefore
-routes to ``openai/gpt-oss-20b``. Strict mode additionally requires every
+GPT-OSS and Qwen 3, and not on every hosted model. Generation therefore routes
+to ``openai/gpt-oss-20b``. Strict mode additionally requires every
 property to appear in ``required`` and every object to set
 ``additionalProperties: false``, and it cannot be combined with streaming or
 tool use.

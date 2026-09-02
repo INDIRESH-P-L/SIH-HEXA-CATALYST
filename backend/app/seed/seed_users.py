@@ -5,9 +5,12 @@ officer has no evidence at all for that competency. That second rule matters —
 re-running the seed after a demo must not overwrite the level a quiz produced,
 because the evidence ledger is append-only and the latest row wins.
 
-Runs only under AUTH_MODE=local. Under AUTH_MODE=supabase, identities live in
-GoTrue and are created through POST /auth/register instead; the script says so
-rather than silently doing nothing.
+Works under both auth modes. Only the *identity* differs: under AUTH_MODE=local
+the row is written into the ``auth.users`` shim inside this transaction, and
+under AUTH_MODE=supabase it is created through the GoTrue admin API, which is
+a remote call that cannot join the transaction. Everything downstream — the
+profile, roles, baselines and prior training — is identical, because it is
+keyed on a user id and does not care where that id came from.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,8 +33,10 @@ from app.services.m1_identity.local_auth import hash_password
 
 log = get_logger(__name__)
 
-#: One shared password across the demo accounts. Local mode only; it never
-#: reaches a Supabase deployment.
+#: One shared password across the demo accounts, in both auth modes — under
+#: AUTH_MODE=supabase these are real GoTrue accounts. It is a seeded demo
+#: credential, published in the README, and must be changed before this runs
+#: anywhere a real official could sign in.
 DEMO_PASSWORD = "Demo@2026"
 
 DEMO_USERS: list[dict[str, object]] = [
@@ -354,6 +360,70 @@ async def _ensure_auth_user(session: AsyncSession, email: str) -> uuid.UUID:
     return user.id
 
 
+def _admin_headers() -> dict[str, str]:
+    key = settings.SUPABASE_SERVICE_ROLE_KEY
+    return {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+
+async def _find_supabase_user(client: httpx.AsyncClient, email: str) -> uuid.UUID | None:
+    """Look up a GoTrue identity by email.
+
+    GoTrue's admin list endpoint pages, and older builds ignore the ``filter``
+    query parameter rather than rejecting it, so the match is re-checked here
+    instead of trusting the server to have applied it.
+    """
+    page = 1
+    while page <= 20:  # 20 x 200 is far more than a demo tenant will hold
+        resp = await client.get(
+            f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users",
+            params={"page": page, "per_page": 200},
+            headers=_admin_headers(),
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                f"Could not list Supabase users ({resp.status_code}): {resp.text[:200]}"
+            )
+        users = resp.json().get("users", [])
+        if not users:
+            return None
+        for user in users:
+            if str(user.get("email", "")).lower() == email:
+                return uuid.UUID(str(user["id"]))
+        page += 1
+    return None
+
+
+async def _ensure_supabase_user(client: httpx.AsyncClient, email: str) -> uuid.UUID:
+    """Find or create the GoTrue identity for an email.
+
+    Created pre-confirmed: these are seeded demo officers, and there is no
+    mailbox behind ``@mospi.gov.in`` to complete a confirmation round-trip.
+    """
+    email = email.strip().lower()
+    resp = await client.post(
+        f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/admin/users",
+        json={"email": email, "password": DEMO_PASSWORD, "email_confirm": True},
+        headers=_admin_headers(),
+    )
+    if resp.status_code < 400:
+        return uuid.UUID(str(resp.json()["id"]))
+
+    # Already there from an earlier seed: adopt the existing id rather than
+    # failing, so the seed stays idempotent.
+    if resp.status_code in (409, 422):
+        found = await _find_supabase_user(client, email)
+        if found is not None:
+            return found
+
+    raise RuntimeError(
+        f"Could not create Supabase user {email} ({resp.status_code}): {resp.text[:200]}"
+    )
+
+
 async def _ensure_baseline(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -388,13 +458,12 @@ async def _ensure_baseline(
 
 
 async def seed_users(session: AsyncSession) -> dict[str, int]:
-    if settings.AUTH_MODE != "local":
-        log.warning(
-            "AUTH_MODE=%s: skipping user seed. Identities live in Supabase Auth; "
-            "create them with POST /auth/register.",
-            settings.AUTH_MODE,
+    if settings.AUTH_MODE == "supabase" and not settings.supabase_configured:
+        raise RuntimeError(
+            "AUTH_MODE=supabase but the Supabase credentials are incomplete. "
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are needed to create "
+            "the demo identities."
         )
-        return {"users": 0, "baselines": 0}
 
     roles_by_code = {
         r.code: r for r in (await session.execute(select(JobRole))).scalars().all()
@@ -410,60 +479,74 @@ async def seed_users(session: AsyncSession) -> dict[str, int]:
     trainings = 0
     comparators = 0
 
-    for spec in DEMO_USERS:
-        email = str(spec["email"])
-        user_id = await _ensure_auth_user(session, email)
-        job_role = roles_by_code[str(spec["job_role_code"])]
+    # One client for the whole seed under Supabase; None under local mode,
+    # where identities are ordinary rows in this same transaction.
+    client: httpx.AsyncClient | None = None
+    if settings.AUTH_MODE == "supabase":
+        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
 
-        await session.execute(
-            pg_insert(Profile)
-            .values(
-                id=user_id,
-                full_name=spec["full_name"],
-                employee_code=spec["employee_code"],
-                designation=spec["designation"],
-                station=spec["station"],
-                job_role_id=job_role.id,
-                cadre=spec["cadre"],
-                years_experience=spec["years_experience"],
-                education=spec["education"],
-            )
-            .on_conflict_do_update(
-                index_elements=[Profile.id],
-                set_={
-                    "full_name": spec["full_name"],
-                    "designation": spec["designation"],
-                    "station": spec["station"],
-                    "job_role_id": job_role.id,
-                    "cadre": spec["cadre"],
-                    "years_experience": spec["years_experience"],
-                    "education": spec["education"],
-                },
-            )
-        )
+    try:
+        for spec in DEMO_USERS:
+            email = str(spec["email"])
+            if client is not None:
+                user_id = await _ensure_supabase_user(client, email)
+            else:
+                user_id = await _ensure_auth_user(session, email)
+            job_role = roles_by_code[str(spec["job_role_code"])]
 
-        for role in spec["roles"]:  # type: ignore[union-attr]
             await session.execute(
-                pg_insert(UserRole)
-                .values(user_id=user_id, role=role)
-                .on_conflict_do_nothing(
-                    index_elements=[UserRole.user_id, UserRole.role]
+                pg_insert(Profile)
+                .values(
+                    id=user_id,
+                    full_name=spec["full_name"],
+                    employee_code=spec["employee_code"],
+                    designation=spec["designation"],
+                    station=spec["station"],
+                    job_role_id=job_role.id,
+                    cadre=spec["cadre"],
+                    years_experience=spec["years_experience"],
+                    education=spec["education"],
+                )
+                .on_conflict_do_update(
+                    index_elements=[Profile.id],
+                    set_={
+                        "full_name": spec["full_name"],
+                        "designation": spec["designation"],
+                        "station": spec["station"],
+                        "job_role_id": job_role.id,
+                        "cadre": spec["cadre"],
+                        "years_experience": spec["years_experience"],
+                        "education": spec["education"],
+                    },
                 )
             )
 
-        for comp_code, level in dict(spec["baseline"]).items():  # type: ignore[arg-type]
-            competency = comps_by_code.get(str(comp_code))
-            if competency is None:
-                log.warning("baseline references unknown competency %s", comp_code)
-                continue
-            if await _ensure_baseline(session, user_id, competency.id, int(level)):
-                baseline_count += 1
+            for role in spec["roles"]:  # type: ignore[union-attr]
+                await session.execute(
+                    pg_insert(UserRole)
+                    .values(user_id=user_id, role=role)
+                    .on_conflict_do_nothing(
+                        index_elements=[UserRole.user_id, UserRole.role]
+                    )
+                )
 
-        trainings += await _seed_prior_training(session, user_id, email, comps_by_code)
-        comparators += await _seed_non_attendee_progression(
-            session, user_id, email, comps_by_code
-        )
-        user_count += 1
+            for comp_code, level in dict(spec["baseline"]).items():  # type: ignore[arg-type]
+                competency = comps_by_code.get(str(comp_code))
+                if competency is None:
+                    log.warning("baseline references unknown competency %s", comp_code)
+                    continue
+                if await _ensure_baseline(session, user_id, competency.id, int(level)):
+                    baseline_count += 1
+
+            trainings += await _seed_prior_training(session, user_id, email, comps_by_code)
+            comparators += await _seed_non_attendee_progression(
+                session, user_id, email, comps_by_code
+            )
+            user_count += 1
+    finally:
+        if client is not None:
+            await client.aclose()
+
 
     await session.flush()
     log.info(

@@ -7,10 +7,11 @@ and the PII assertion impossible to bypass by accident.
 Model routing (§8.2)
 --------------------
 Strict JSON schema output — constrained decoding, guaranteed-parsable — is
-supported on GPT-OSS and Qwen 3, and *not* on llama-3.3-70b-versatile. So MCQ
-generation uses ``openai/gpt-oss-20b``, and the prose jobs use
-``llama-3.3-70b-versatile`` with ``llama-3.1-8b-instant`` as the rate-limit
-fallback.
+supported on GPT-OSS and Qwen 3, and not on every hosted model. So MCQ
+generation uses ``openai/gpt-oss-20b``, the prose jobs use
+``openai/gpt-oss-120b``, and ``openai/gpt-oss-20b`` doubles as the rate-limit
+fallback. Groq has since retired the Llama 3.x models this originally routed
+to, which is exactly why the choice lives in settings rather than in code.
 
 Free-tier reality
 -----------------

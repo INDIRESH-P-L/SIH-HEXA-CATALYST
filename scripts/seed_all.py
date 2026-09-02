@@ -108,10 +108,9 @@ async def main() -> int:
 
         await session.commit()
 
-    if settings.AUTH_MODE == "local":
-        print("\ndemo accounts (local auth):")
-        for email, password, description in demo_credentials():
-            print(f"  {email:<32} {password:<12} {description}")
+    print(f"\ndemo accounts ({settings.AUTH_MODE} auth):")
+    for email, password, description in demo_credentials():
+        print(f"  {email:<32} {password:<12} {description}")
 
     await dispose_engine()
     return 0
