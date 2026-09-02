@@ -97,7 +97,14 @@ function SignUpForm() {
       if (status === 409) {
         setError('That email is already registered. Please sign in instead.')
       } else if (status === 422) {
-        setError('Please check your details — the password must be at least 8 characters.')
+        // Parse Pydantic validation errors
+        const detail = (caught as any)?.response?.data?.detail
+        let msg = 'the password must be at least 8 characters.' // default
+        if (Array.isArray(detail) && detail.length > 0) {
+          const loc = detail[0].loc.join('.')
+          msg = `${loc}: ${detail[0].msg}`
+        }
+        setError(`Validation failed — ${msg}`)
       } else {
         setError(errorMessage(caught, 'Registration failed. Please try again.'))
       }
