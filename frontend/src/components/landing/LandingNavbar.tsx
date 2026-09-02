@@ -92,7 +92,7 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
           ) : (
             <>
               <Link
-                to="/login"
+                to="/login?tab=signup"
                 className="rounded-full border-2 border-[#0B3060] bg-white px-5 py-1.5 text-13 font-bold text-[#0B3060] shadow-sm hover:bg-slate-50 transition-all"
               >
                 Sign Up
@@ -143,7 +143,7 @@ export function LandingNavbar({ onOpenLogin }: LandingNavbarProps) {
           {!user && (
             <div className="pt-2 flex flex-col gap-2">
               <Link
-                to="/login"
+                to="/login?tab=signup"
                 onClick={() => setMobileMenuOpen(false)}
                 className="w-full rounded-lg border-2 border-[#0B3060] py-2.5 text-14 font-bold text-[#0B3060] text-center"
               >

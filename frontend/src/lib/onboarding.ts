@@ -25,3 +25,19 @@ export function needsOnboarding(user: Me | null): boolean {
   if (user.roles.includes('trainer') || user.roles.includes('admin')) return false
   return !user.onboarded
 }
+
+/**
+ * Whether this employee should be routed to /initial-assessment.
+ *
+ * Triggered AFTER onboarding (self-declaration) is done but BEFORE the employee
+ * has completed the actual competency test. Trainers and admins are excluded.
+ */
+export function needsInitialAssessment(user: Me | null): boolean {
+  if (!user) return false
+  if (user.roles.includes('trainer') || user.roles.includes('admin')) return false
+  // Must have completed onboarding (has evidence on file) …
+  if (!user.onboarded) return false
+  // … but must NOT have completed the initial assessment yet.
+  return !user.profile.initial_assessment_completed
+}
+

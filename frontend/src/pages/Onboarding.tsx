@@ -17,9 +17,8 @@
  * Design language: identical to the authenticated Karmayogi Bharat shell
  * (tricolor strip, #0B3060 navy, #F58220 saffron, white cards).
  */
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import {
-  BookOpen,
   Brain,
   Briefcase,
   CheckCircle2,
@@ -37,7 +36,6 @@ import { fracLabel } from '../lib/format'
 import {
   useCompetencies,
   useDeclareBatch,
-  useGenerateRecommendations,
   useUpdateProfile,
 } from '../hooks'
 
@@ -97,7 +95,7 @@ function StepIndicator({ current }: { current: number }) {
   const steps = [
     { label: 'Profile', icon: User2 },
     { label: 'Skills', icon: Brain },
-    { label: 'Recommendations', icon: Sparkles },
+    { label: 'Assessment', icon: Sparkles },
   ]
 
   return (
@@ -554,137 +552,70 @@ function StepAssessment({
   )
 }
 
-// ── Step 3: Generating Recommendations ───────────────────────────────────────
+// ── Step 3: Assessment Gate ────────────────────────────────────────────────────
+// Replaces the old "auto-generate recommendations" step.
+// Instead of calling /recommendations/generate immediately, we tell the officer
+// that a competency assessment is required before their learning path is ready.
 
-function StepRecommendations() {
-  const generate = useGenerateRecommendations()
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
-
-  // StrictMode mounts effects twice in development. Without this the wizard
-  // would fire two generation runs — two recommender passes, two LLM
-  // explanation passes and two batches in the ledger.
-  const started = useRef(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  /**
-   * Leave by reloading rather than by client-side navigation.
-   *
-   * The route guards read `onboarded` from the session, which is derived from
-   * the evidence ledger. Step 2 has already written those rows, so the copy in
-   * memory is stale in exactly the direction that matters: a client-side
-   * navigation renders once with the old value and the guard bounces straight
-   * back into the wizard. Patching the session in place instead races the
-   * render — whichever of the two redirects lands first decides the
-   * destination. A reload re-reads /auth/me from scratch and has no such
-   * ordering to get wrong. It happens once in an officer's lifetime, behind a
-   * success animation, so the cost is nothing and the determinism is worth it.
-   */
-  function leaveForRecommendations() {
-    window.location.assign('/recommendations')
+function StepAssessmentCTA() {
+  function goToAssessment() {
+    // Hard-navigate so /auth/me is re-fetched (the onboarded flag changed).
+    window.location.assign('/initial-assessment')
   }
 
-  useEffect(() => {
-    if (started.current) return
-    started.current = true
-
-    async function run() {
-      try {
-        await generate.mutateAsync()
-        setDone(true)
-        // Brief pause so the success state is visible.
-        timer.current = setTimeout(leaveForRecommendations, 1800)
-      } catch {
-        setError(
-          'Could not generate recommendations right now. You can try again from the Recommendations page.',
-        )
-      }
-    }
-    void run()
-
-    // Without this the pending navigation still fires after the user has
-    // pressed Back, yanking them out of wherever they went.
-    return () => {
-      if (timer.current) clearTimeout(timer.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  if (error) {
-    return (
-      <div className="space-y-5 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 mx-auto">
-          <Sparkles size={28} className="text-amber-600" />
-        </div>
-        <h3 className="text-18 font-bold text-slate-900">Almost there!</h3>
-        <p className="text-14 text-slate-600 max-w-sm mx-auto">
-          Your profile and skill levels were saved. The AI recommender will run when you visit the
-          Recommendations page.
-        </p>
-        <ErrorNote>{error}</ErrorNote>
-        <button
-          type="button"
-          onClick={leaveForRecommendations}
-          className="w-full rounded-xl bg-[#0B3060] py-3 text-14 font-bold text-white hover:bg-[#F58220] transition-colors"
-        >
-          Go to Recommendations →
-        </button>
-      </div>
-    )
-  }
-
-  if (done) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-6 text-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 shadow-sm animate-bounce-once">
+  return (
+    <div className="space-y-6 py-2">
+      {/* Success badge */}
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 shadow-sm">
           <CheckCircle2 size={40} className="text-emerald-500" />
         </div>
-        <h3 className="text-20 font-black text-slate-900">You're all set!</h3>
-        <p className="text-14 text-slate-500">Redirecting to your personalised learning path…</p>
-        <div className="mt-2">
-          <Spinner label="Loading recommendations" />
-        </div>
-      </div>
-    )
-  }
-
-  // Loading state
-  return (
-    <div className="space-y-6 py-4">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div className="relative flex h-20 w-20 items-center justify-center">
-          <div className="absolute inset-0 rounded-full border-4 border-[#0B3060]/10 animate-ping" />
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#0B3060] to-[#154399] shadow-lg">
-            <Sparkles size={28} className="text-[#F58220]" />
-          </div>
-        </div>
         <div>
-          <h3 className="text-18 font-bold text-slate-900">Generating your learning path…</h3>
-          <p className="text-13 text-slate-500 mt-1">
-            The AI is matching courses to your skill profile
-          </p>
+          <h3 className="text-20 font-black text-slate-900">Profile Created Successfully!</h3>
+          <p className="text-13 text-slate-500 mt-1">Your skill levels have been saved.</p>
         </div>
       </div>
 
-      {/* Animated pipeline steps */}
-      {[
-        { icon: Brain, label: 'Analysing your competency profile', delay: '0s' },
-        { icon: BookOpen, label: 'Scanning iGOT & NSSTA course catalogue', delay: '0.4s' },
-        { icon: Sparkles, label: 'Ranking by skill-gap priority (Groq AI)', delay: '0.8s' },
-        { icon: CheckCircle2, label: 'Building your personalised pathway', delay: '1.2s' },
-      ].map(({ icon: Icon, label, delay }) => (
-        <div
-          key={label}
-          className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 opacity-0 animate-fade-in"
-          style={{ animationDelay: delay, animationFillMode: 'forwards' }}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0B3060]/10">
-            <Icon size={15} className="text-[#0B3060]" />
+      {/* Assessment prompt */}
+      <div className="rounded-2xl border border-[#0B3060]/15 bg-gradient-to-br from-[#0B3060]/5 to-[#154399]/8 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F58220]/15">
+            <Brain size={16} className="text-[#F58220]" />
           </div>
-          <p className="text-13 font-medium text-slate-700">{label}</p>
-          <Spinner size={14} label="" />
+          <p className="text-14 font-bold text-[#0B3060]">One more step before your learning path</p>
         </div>
-      ))}
+        <p className="text-13 text-slate-600 leading-relaxed">
+          Before we recommend courses, we need to assess your <strong>actual competency level</strong>.
+          This short test (~20–25 questions) ensures your recommendations are based on your real
+          skills — not just self-reported levels.
+        </p>
+        <div className="grid grid-cols-3 gap-2 pt-1">
+          {[
+            { label: 'Questions', value: '20–25' },
+            { label: 'Duration', value: '~15 min' },
+            { label: 'Competencies', value: '4–6' },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-xl bg-white border border-slate-100 p-3 text-center shadow-sm">
+              <p className="text-16 font-black text-[#0B3060]">{value}</p>
+              <p className="text-11 text-slate-500">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={goToAssessment}
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0B3060] to-[#154399] py-3.5 text-14 font-bold text-white shadow-lg hover:opacity-90 active:scale-[0.98] transition-all"
+      >
+        <Sparkles size={16} />
+        Start Competency Assessment
+        <ChevronRight size={16} />
+      </button>
+
+      <p className="text-12 text-slate-400 text-center">
+        You can retake assessments anytime from your profile.
+      </p>
     </div>
   )
 }
@@ -771,9 +702,9 @@ export default function Onboarding() {
           )}
           {step === 3 && (
             <>
-              <h2 className="text-24 font-extrabold text-[#0B3060]">Personalising Your Path</h2>
+              <h2 className="text-24 font-extrabold text-[#0B3060]">Competency Assessment</h2>
               <p className="mt-1 text-14 text-slate-500">
-                AI is curating courses from iGOT & NSSTA based on your skill gaps
+                A short test to measure your actual competency before recommending courses
               </p>
             </>
           )}
@@ -790,7 +721,7 @@ export default function Onboarding() {
               onBack={() => setStep(1)}
             />
           )}
-          {step === 3 && user && <StepRecommendations />}
+          {step === 3 && <StepAssessmentCTA />}
         </div>
 
         {/* Footer note */}

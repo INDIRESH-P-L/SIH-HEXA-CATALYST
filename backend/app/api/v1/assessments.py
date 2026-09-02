@@ -265,3 +265,377 @@ async def submit(
         ],
         evidence_id=result.evidence_id,
     )
+
+
+# ── Initial Competency Assessment endpoints ───────────────────────────────────
+# These three endpoints orchestrate the new-user assessment flow that sits
+# between onboarding (self-declaration) and course recommendation.
+
+
+from pydantic import BaseModel  # noqa: E402  (local import for inline schemas)
+
+
+class InitialTopicRead(BaseModel):
+    """One competency that will be tested in the initial assessment."""
+    competency_id: uuid.UUID
+    competency_code: str
+    competency_name: str
+    cluster: str
+    required_level: int
+    question_count: int
+    criticality: float
+
+
+class InitialTopicsResponse(BaseModel):
+    topics: list[InitialTopicRead]
+    total_questions: int
+
+
+class StartedAssessmentRef(BaseModel):
+    competency_id: uuid.UUID
+    competency_code: str
+    competency_name: str
+    assessment_id: uuid.UUID
+    question_count: int
+
+
+class InitialStartResponse(BaseModel):
+    assessments: list[StartedAssessmentRef]
+    total_questions: int
+
+
+class InitialCompleteRequest(BaseModel):
+    """List of assessment IDs that have been submitted by the frontend."""
+    assessment_ids: list[uuid.UUID]
+
+
+class CompetencyResult(BaseModel):
+    competency_id: uuid.UUID
+    competency_code: str
+    competency_name: str
+    score: float           # 0–100
+    correct: int
+    total: int
+    level_before: int
+    level_after: int
+    level_label: str       # "Beginner" / "Basic" / "Intermediate" / "Advanced" / "Expert"
+    required_level: int
+    required_label: str
+    gap: int               # required_level - level_after  (negative = above required)
+    gap_band: str          # "critical" / "high" / "medium" / "none" / "above_required"
+
+
+class InitialCompleteResponse(BaseModel):
+    overall_score: float
+    results: list[CompetencyResult]
+    top_gaps: list[CompetencyResult]   # sorted by gap, highest first
+    strengths: list[CompetencyResult]  # where gap <= 0
+    ai_insight: str | None = None
+    recommendations_generated: bool = False
+
+
+_LEVEL_LABELS = {0: "Unassessed", 1: "Beginner", 2: "Basic", 3: "Intermediate", 4: "Advanced"}
+
+# A 5th synthetic bucket for scores >= 90 mapped to level 4 with "Expert" label
+def _level_label(level: int, score: float) -> str:
+    if level == 4 and score >= 90:
+        return "Expert"
+    return _LEVEL_LABELS.get(level, "Unassessed")
+
+
+def _gap_band(gap: int, criticality: float = 1.0) -> str:
+    if gap <= 0:
+        return "above_required" if gap < 0 else "none"
+    weighted = gap * criticality
+    if weighted >= 3:
+        return "critical"
+    if weighted >= 2:
+        return "high"
+    return "medium"
+
+
+@router.get(
+    "/initial/topics",
+    response_model=InitialTopicsResponse,
+    summary="Competency topics for the initial assessment",
+)
+async def initial_topics(
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InitialTopicsResponse:
+    """Return competencies to test, based on the user's job role.
+
+    Only competencies that have ≥3 approved questions in the bank are included.
+    Returns up to 6 competencies sorted by criticality (highest first).
+    """
+    from app.models.competency import RoleCompetencyRequirement, Competency
+    from app.models.question import Question
+    from sqlalchemy import and_
+
+    topics: list[InitialTopicRead] = []
+
+    if user.profile.job_role_id is not None:
+        # Load role requirements ordered by criticality descending
+        stmt = (
+            select(RoleCompetencyRequirement, Competency)
+            .join(Competency, Competency.id == RoleCompetencyRequirement.competency_id)
+            .where(RoleCompetencyRequirement.job_role_id == user.profile.job_role_id)
+            .order_by(RoleCompetencyRequirement.criticality.desc())
+        )
+        requirements = (await session.execute(stmt)).all()
+
+        for req, comp in requirements:
+            # Count approved questions
+            q_count = await session.scalar(
+                select(func.count())
+                .select_from(Question)
+                .where(and_(
+                    Question.competency_id == comp.id,
+                    Question.status == "APPROVED",
+                    Question.is_negative_example.is_(False),
+                ))
+            )
+            if (q_count or 0) < 3:
+                continue
+
+            topics.append(InitialTopicRead(
+                competency_id=comp.id,
+                competency_code=comp.code,
+                competency_name=comp.name,
+                cluster=comp.cluster,
+                required_level=req.required_level,
+                question_count=min(int(q_count), 5),
+                criticality=float(req.criticality),
+            ))
+
+            if len(topics) >= 6:
+                break
+
+    # Fallback: if job role has no requirements or no questions, pick SQL
+    if not topics:
+        from app.models.question import Question
+        stmt2 = (
+            select(Competency)
+            .join(Question, Question.competency_id == Competency.id)
+            .where(Question.status == "APPROVED")
+            .where(Question.is_negative_example.is_(False))
+            .group_by(Competency.id)
+            .having(func.count() >= 3)
+            .limit(5)
+        )
+        fallback_comps = (await session.execute(stmt2)).scalars().all()
+        for comp in fallback_comps:
+            q_count = await session.scalar(
+                select(func.count()).select_from(Question)
+                .where(Question.competency_id == comp.id)
+                .where(Question.status == "APPROVED")
+            )
+            topics.append(InitialTopicRead(
+                competency_id=comp.id,
+                competency_code=comp.code,
+                competency_name=comp.name,
+                cluster=comp.cluster,
+                required_level=3,
+                question_count=min(int(q_count or 0), 5),
+                criticality=1.0,
+            ))
+
+    total = sum(t.question_count for t in topics)
+    return InitialTopicsResponse(topics=topics, total_questions=total)
+
+
+@router.post(
+    "/initial/start",
+    response_model=InitialStartResponse,
+    summary="Start all assessment sessions for the initial assessment",
+)
+async def initial_start(
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InitialStartResponse:
+    """Create one assessment per topic returned by /initial/topics.
+
+    Each assessment is created in 'proctored' mode so the evidence carries
+    0.90 confidence and supersedes the 0.25 self-declarations from onboarding.
+    Returns a list of {competency, assessment_id} so the frontend can drive
+    each quiz in sequence.
+    """
+    topics_resp = await initial_topics(user=user, session=session)
+    refs: list[StartedAssessmentRef] = []
+
+    for topic in topics_resp.topics:
+        assessment = await service.create_assessment(
+            session,
+            user_id=user.id,
+            competency_id=topic.competency_id,
+            material_id=None,
+            count=topic.question_count,
+            mode="proctored",
+        )
+        session.add(ActivityLog(
+            user_id=user.id,
+            action="initial_assessment.start",
+            entity="assessments",
+            entity_id=assessment.id,
+            extra={"competency_code": topic.competency_code, "count": topic.question_count},
+        ))
+        refs.append(StartedAssessmentRef(
+            competency_id=topic.competency_id,
+            competency_code=topic.competency_code,
+            competency_name=topic.competency_name,
+            assessment_id=assessment.id,
+            question_count=topic.question_count,
+        ))
+
+    await session.commit()
+    return InitialStartResponse(
+        assessments=refs,
+        total_questions=sum(r.question_count for r in refs),
+    )
+
+
+@router.post(
+    "/initial/complete",
+    response_model=InitialCompleteResponse,
+    summary="Finalise the initial assessment and generate recommendations",
+)
+async def initial_complete(
+    payload: InitialCompleteRequest,
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InitialCompleteResponse:
+    """Aggregate submitted assessment results, mark profile as assessed, generate recommendations.
+
+    Must be called AFTER each assessment in payload.assessment_ids has been
+    submitted via POST /assessments/{id}/submit.
+    """
+    from app.models.assessment import Assessment
+    from app.models.competency import RoleCompetencyRequirement, Competency
+    from app.services import m5_recommender as recommender
+    from app.services.m2_framework import load_requirements
+    from app.models.user import Profile
+
+    results: list[CompetencyResult] = []
+
+    # Load required levels for the user's role
+    req_map: dict[str, int] = {}
+    crit_map: dict[str, float] = {}
+    if user.profile.job_role_id:
+        for req, comp in await load_requirements(session, user.profile.job_role_id):
+            req_map[str(comp.id)] = req.required_level
+            crit_map[str(comp.id)] = float(req.criticality)
+
+    for assessment_id in payload.assessment_ids:
+        assessment = await session.get(Assessment, assessment_id)
+        if assessment is None or assessment.user_id != user.id:
+            continue
+        if assessment.score is None or assessment.level_after is None:
+            continue  # not yet submitted — skip
+
+        comp = assessment.competency
+        if comp is None:
+            continue
+
+        score_pct = float(assessment.score)
+        level_after = int(assessment.level_after)
+        level_before = int(assessment.level_before or 0)
+        correct = int(assessment.correct_count or 0)
+        total = int(assessment.total_questions)
+        comp_id_str = str(comp.id)
+        req_level = req_map.get(comp_id_str, 3)
+        criticality = crit_map.get(comp_id_str, 1.0)
+        gap = req_level - level_after
+
+        results.append(CompetencyResult(
+            competency_id=comp.id,
+            competency_code=comp.code,
+            competency_name=comp.name,
+            score=score_pct,
+            correct=correct,
+            total=total,
+            level_before=level_before,
+            level_after=level_after,
+            level_label=_level_label(level_after, score_pct),
+            required_level=req_level,
+            required_label=_LEVEL_LABELS.get(req_level, "Advanced"),
+            gap=gap,
+            gap_band=_gap_band(gap, criticality),
+        ))
+
+    # Overall score = weighted average
+    overall = (sum(r.score for r in results) / len(results)) if results else 0.0
+
+    # Sort gaps: highest gap first
+    gaps = sorted([r for r in results if r.gap > 0], key=lambda r: r.gap, reverse=True)
+    strengths = [r for r in results if r.gap <= 0]
+
+    # Best-effort AI insight
+    ai_insight: str | None = None
+    try:
+        from app.ai.llm_client import complete
+        from app.ai import prompts
+        competency_summary = "\n".join(
+            f"- {r.competency_name}: {r.score:.0f}% ({r.level_label}) — required: {r.required_label}"
+            for r in results
+        )
+        gap_summary = "\n".join(
+            f"- {r.competency_name}: {r.gap_band} gap"
+            for r in gaps[:3]
+        ) or "No significant gaps identified."
+        prompt = (
+            f"You are an expert learning advisor for Indian government officials.\n"
+            f"Role: {user.profile.designation or 'Statistical Officer'}\n\n"
+            f"Initial competency assessment results:\n{competency_summary}\n\n"
+            f"Top gaps:\n{gap_summary}\n\n"
+            f"Write a 3-sentence personalised insight: summarise strengths (1 sentence), "
+            f"top priorities for development (1 sentence), and one encouraging message (1 sentence). "
+            f"Be specific. Do not use bullet points."
+        )
+        ai_insight = await complete(prompt, max_tokens=180)
+    except Exception:
+        if gaps:
+            top_gap = gaps[0]
+            ai_insight = (
+                f"Your assessment reveals strong performance in "
+                f"{strengths[0].competency_name if strengths else 'several areas'}. "
+                f"Your highest development priority is {top_gap.competency_name}, "
+                f"where a {top_gap.gap_band} gap exists. "
+                f"Focusing on the recommended courses will accelerate your growth."
+            )
+        else:
+            ai_insight = (
+                "Excellent! Your assessment shows you meet or exceed the required competency "
+                "levels. Continue deepening your expertise with advanced courses."
+            )
+
+    # Mark profile as assessment-complete
+    profile = await session.get(Profile, user.id)
+    if profile is not None:
+        profile.initial_assessment_completed = True
+        session.add(ActivityLog(
+            user_id=user.id,
+            action="initial_assessment.complete",
+            entity="profile",
+            entity_id=user.id,
+            extra={"overall_score": round(overall, 1), "competencies_tested": len(results)},
+        ))
+
+    # Generate recommendations now that we have real evidence
+    rec_ok = False
+    try:
+        await recommender.generate(session, profile=user.profile)
+        rec_ok = True
+    except Exception:
+        pass  # recommendations will be generated on first visit to /recommendations
+
+    await session.commit()
+
+    return InitialCompleteResponse(
+        overall_score=round(overall, 1),
+        results=results,
+        top_gaps=gaps[:3],
+        strengths=strengths,
+        ai_insight=ai_insight,
+        recommendations_generated=rec_ok,
+    )
+

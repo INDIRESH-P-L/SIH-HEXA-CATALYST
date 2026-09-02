@@ -99,7 +99,7 @@ export function HeroSection({ onOpenLogin }: HeroSectionProps) {
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-3.5 pt-2">
               <Link
-                to="/login"
+                to="/login?tab=signup"
                 className="flex items-center gap-2 rounded-full border-2 border-[#0B3060] bg-white/90 backdrop-blur px-7 py-3 text-15 font-bold text-[#0B3060] shadow-sm hover:bg-slate-50 transition-all transform hover:-translate-y-0.5"
               >
                 <span>Sign Up</span>

@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Shell } from './components/layout/Shell'
 import { Spinner } from './components/common'
 import { useAuth } from './lib/auth'
-import { needsOnboarding } from './lib/onboarding'
+import { needsInitialAssessment, needsOnboarding } from './lib/onboarding'
 
 import AdminDashboard from './pages/AdminDashboard'
 import Architecture from './pages/Architecture'
@@ -11,6 +11,7 @@ import Assessments from './pages/Assessments'
 import Assistant from './pages/Assistant'
 import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
+import InitialAssessment from './pages/InitialAssessment'
 import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
 import MyCompetencies from './pages/MyCompetencies'
@@ -49,6 +50,8 @@ function RequireRole({
   if (role === 'admin' && !isAdmin) return <Navigate to="/" replace />
 
   if (needsOnboarding(user)) return <Navigate to="/onboarding" replace />
+  // Gate: assessed users (employees without initial_assessment_completed) go to the assessment.
+  if (needsInitialAssessment(user)) return <Navigate to="/initial-assessment" replace />
 
   return <>{children}</>
 }
@@ -73,6 +76,27 @@ function RequireOnboarding({ children }: { children: React.ReactNode }) {
   }
   if (!user) return <Navigate to="/login" replace />
   if (!needsOnboarding(user)) return <Navigate to="/" replace />
+
+  return <>{children}</>
+}
+
+/**
+ * Assessment guard — for the /initial-assessment route.
+ * Redirects away if the user doesn't need to take it.
+ */
+function RequireInitialAssessment({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-full items-center justify-center py-20">
+        <Spinner label="Restoring your session" />
+      </div>
+    )
+  }
+  if (!user) return <Navigate to="/login" replace />
+  if (needsOnboarding(user)) return <Navigate to="/onboarding" replace />
+  if (!needsInitialAssessment(user)) return <Navigate to="/" replace />
 
   return <>{children}</>
 }
@@ -107,6 +131,16 @@ export default function App() {
           <RequireOnboarding>
             <Onboarding />
           </RequireOnboarding>
+        }
+      />
+
+      {/* Initial competency assessment — after onboarding, before recommendations */}
+      <Route
+        path="/initial-assessment"
+        element={
+          <RequireInitialAssessment>
+            <InitialAssessment />
+          </RequireInitialAssessment>
         }
       />
 

@@ -393,3 +393,48 @@ export function useTrainingEffectiveness(enabled = true) {
         .data,
   })
 }
+
+// ── M3 · initial competency assessment ───────────────────────────────────────
+
+import type {
+  InitialTopicsResponse,
+  InitialStartResponse,
+  InitialCompleteResponse,
+} from '../lib/types'
+
+export function useInitialAssessmentTopics() {
+  return useQuery({
+    queryKey: ['initial-assessment', 'topics'],
+    queryFn: async () =>
+      (await api.get<InitialTopicsResponse>(API.v1('/assessments/initial/topics'))).data,
+    staleTime: 0,
+  })
+}
+
+export function useStartInitialAssessment() {
+  return useMutation({
+    mutationFn: async () =>
+      (await api.post<InitialStartResponse>(API.v1('/assessments/initial/start'))).data,
+  })
+}
+
+export function useCompleteInitialAssessment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (assessmentIds: string[]) =>
+      (
+        await api.post<InitialCompleteResponse>(API.v1('/assessments/initial/complete'), {
+          assessment_ids: assessmentIds,
+        })
+      ).data,
+    onSuccess: () => {
+      // The assessment wrote real evidence — everything downstream is stale.
+      void queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+      void queryClient.invalidateQueries({ queryKey: ['gaps'] })
+      void queryClient.invalidateQueries({ queryKey: ['competencies', 'me'] })
+      void queryClient.invalidateQueries({ queryKey: ['analytics'] })
+      void queryClient.invalidateQueries({ queryKey: ['assessments'] })
+    },
+  })
+}
+

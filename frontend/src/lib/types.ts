@@ -38,6 +38,7 @@ export interface Profile {
   years_experience: number | null
   education: string | null
   job_role: JobRole | null
+  initial_assessment_completed: boolean
   created_at: string | null
 }
 
@@ -56,6 +57,61 @@ export interface TokenResponse {
   token_type: string
   expires_in: number
   user: Me
+}
+
+// ── M3 · initial competency assessment ───────────────────────────────────────
+
+export interface InitialTopic {
+  competency_id: string
+  competency_code: string
+  competency_name: string
+  cluster: string
+  required_level: number
+  question_count: number
+  criticality: number
+}
+
+export interface InitialTopicsResponse {
+  topics: InitialTopic[]
+  total_questions: number
+}
+
+export interface StartedAssessmentRef {
+  competency_id: string
+  competency_code: string
+  competency_name: string
+  assessment_id: string
+  question_count: number
+}
+
+export interface InitialStartResponse {
+  assessments: StartedAssessmentRef[]
+  total_questions: number
+}
+
+export interface CompetencyResult {
+  competency_id: string
+  competency_code: string
+  competency_name: string
+  score: number
+  correct: number
+  total: number
+  level_before: number
+  level_after: number
+  level_label: string
+  required_level: number
+  required_label: string
+  gap: number
+  gap_band: string
+}
+
+export interface InitialCompleteResponse {
+  overall_score: number
+  results: CompetencyResult[]
+  top_gaps: CompetencyResult[]
+  strengths: CompetencyResult[]
+  ai_insight: string | null
+  recommendations_generated: boolean
 }
 
 // ── M2 · competency framework ────────────────────────────────────────────────

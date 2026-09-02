@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,12 @@ class Profile(Base):
     cadre: Mapped[str | None] = mapped_column(CADRE_TYPE, default="ISS")
     years_experience: Mapped[int | None] = mapped_column(Integer, default=0)
     education: Mapped[str | None] = mapped_column(Text)
+    #: Set to True once the user completes the initial competency assessment.
+    #: Governs the /initial-assessment route gate. Separate from `onboarded`
+    #: (which only requires any evidence on file, including self-declarations).
+    initial_assessment_completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -31,6 +31,7 @@ class ProfileRead(BaseModel):
     years_experience: int | None = None
     education: str | None = None
     job_role: JobRoleRead | None = None
+    initial_assessment_completed: bool = False
     created_at: datetime | None = None
 
 
