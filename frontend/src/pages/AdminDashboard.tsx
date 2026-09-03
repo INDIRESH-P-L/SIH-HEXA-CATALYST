@@ -39,6 +39,7 @@ import {
   useCompetencyMatrix,
   useEventStream,
   useRebuildMarts,
+  useSyncCatalogue,
   useTrainingEffectiveness,
   useUnblockUser,
 } from '../hooks'
@@ -64,8 +65,11 @@ export default function AdminDashboard({ defaultTab = 'accounts' }: AdminDashboa
   const effectiveness = useTrainingEffectiveness()
   const events = useEventStream()
   const rebuild = useRebuildMarts()
+  const syncCatalogue = useSyncCatalogue()
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Filters for account management
+
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all')
   const [roleFilter, setRoleFilter] = useState<string>('all')
@@ -233,6 +237,32 @@ export default function AdminDashboard({ defaultTab = 'accounts' }: AdminDashboa
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={syncCatalogue.isPending}
+              onClick={() => {
+                setSyncMessage(null)
+                syncCatalogue.mutate(undefined, {
+                  onSuccess: (data) => {
+                    setSyncMessage({
+                      type: 'success',
+                      text: `Successfully synced ${data.fetched} courses from Mock iGOT (${data.embedded} vectors embedded).`,
+                    })
+                  },
+                  onError: (err) => {
+                    setSyncMessage({
+                      type: 'error',
+                      text: `Mock iGOT synchronization failed: ${errorMessage(err)}`,
+                    })
+                  },
+                })
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-12 font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={syncCatalogue.isPending ? 'animate-spin' : ''} />
+              <span>{syncCatalogue.isPending ? 'Syncing iGOT...' : 'Sync with Mock iGOT'}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 void accountsQuery.refetch()
                 void blockedQuery.refetch()
@@ -245,6 +275,34 @@ export default function AdminDashboard({ defaultTab = 'accounts' }: AdminDashboa
           </div>
         }
       />
+
+      {/* Sync notification banner */}
+      {syncMessage && (
+        <div
+          className={`mb-6 flex items-start justify-between gap-3 rounded-xl border p-4 shadow-xs text-12 ${
+            syncMessage.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-red-200 bg-red-50 text-red-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {syncMessage.type === 'success' ? (
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle size={18} className="text-red-600 shrink-0" />
+            )}
+            <span className="font-semibold">{syncMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSyncMessage(null)}
+            className="text-11 font-bold underline opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
 
       {/* Error Alert Banner when accounts query fails */}
       {accountsQuery.isError && (

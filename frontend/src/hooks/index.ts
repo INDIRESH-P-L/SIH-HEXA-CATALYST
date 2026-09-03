@@ -201,7 +201,29 @@ export function useNominate() {
   })
 }
 
+export function useSyncCatalogue() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{
+          fetched: number
+          upserted: number
+          embedded: number
+          igot: number
+          nssta: number
+          provider: string
+        }>(API.v1('/catalogue/sync'))
+      ).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['courses'] })
+      void queryClient.invalidateQueries({ queryKey: ['catalogue'] })
+    },
+  })
+}
+
 // ── M8 · materials ───────────────────────────────────────────────────────────
+
 
 export function useMaterials(enabled = true) {
   return useQuery({

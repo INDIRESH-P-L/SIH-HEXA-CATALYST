@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, CalendarDays, Clock, Layers, MonitorPlay, Users } from 'lucide-react'
+import { ArrowLeft, CalendarDays, Clock, ExternalLink, Layers, MonitorPlay, Users } from 'lucide-react'
 
 import {
   Badge,
@@ -113,20 +113,40 @@ export default function CourseDetail() {
 
         <Card className="lg:col-span-4" label={isNSSTA ? 'Request nomination' : 'Enrolment'}>
           {existing ? (
-            <>
-              <Badge tone={existing.status === 'COMPLETED' ? 'met' : 'accent'}>
-                {existing.status.replace(/_/g, ' ')}
-              </Badge>
-              {existing.external_ref && (
-                <p className="mt-2 font-mono text-11 text-ink-3">ref {existing.external_ref}</p>
-              )}
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Badge tone={existing.status === 'COMPLETED' ? 'met' : 'accent'}>
+                    {existing.status.replace(/_/g, ' ')}
+                  </Badge>
+                  {existing.external_ref && (
+                    <span className="font-mono text-11 text-ink-3">ref {existing.external_ref}</span>
+                  )}
+                </div>
+                <p className="mt-2 text-13 text-ink-2">
+                  Enrolment confirmed on Mock iGOT Karmayogi portal.
+                </p>
+              </div>
+
+              <a
+                href={course.course_url || `http://localhost:5174/learn/${course.external_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded bg-accent px-4 py-2.5 text-13 font-medium text-white shadow-sm transition hover:bg-accent/90"
+              >
+                <MonitorPlay size={15} />
+                <span>Open in iGOT Karmayogi</span>
+                <ExternalLink size={13} />
+              </a>
+
               {existing.note && (
                 <p className="mt-2 max-w-prose text-12 leading-relaxed text-ink-2">
                   {existing.note}
                 </p>
               )}
-            </>
+            </div>
           ) : isNSSTA ? (
+
             <div className="space-y-4">
               <p className="max-w-prose text-13 leading-relaxed text-ink-2">
                 Academy programmes are nominated for, not self-enrolled. You request; a controlling

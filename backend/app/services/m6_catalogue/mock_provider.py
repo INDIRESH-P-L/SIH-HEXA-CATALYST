@@ -38,33 +38,64 @@ _breaker = CircuitBreaker(
 
 
 def _to_offering(raw: dict[str, Any], source: str) -> OfferingDTO:
-    """Normalise a catalogue record into the shared DTO."""
+    """Normalise a catalogue record into the shared DTO.
+    Supports both D:\igot REST API course objects and legacy mock stubs.
+    """
     session_start = raw.get("session_start")
     parsed_start: date | None = None
     if session_start:
         try:
-            parsed_start = date.fromisoformat(str(session_start))
+            parsed_start = date.fromisoformat(str(session_start)[:10])
         except ValueError:
             parsed_start = None
 
+    external_id = str(raw.get("external_id") or raw.get("course_id") or raw.get("id"))
+    raw_source = str(raw.get("source") or source or "IGOT").upper()
+    
+    # Competency mapping
+    comp_code = raw.get("competency") or raw.get("competency_code")
+    if not comp_code and raw.get("competencies") and isinstance(raw["competencies"], list):
+        first_comp = raw["competencies"][0]
+        if isinstance(first_comp, dict):
+            comp_code = first_comp.get("competency_code") or first_comp.get("code")
+    if not comp_code:
+        comp_code = "GENERAL"
+
+    # Level mapping
+    level = raw.get("proficiency_level") or raw.get("level")
+    if not level and raw.get("competencies") and isinstance(raw["competencies"], list):
+        first_comp = raw["competencies"][0]
+        if isinstance(first_comp, dict):
+            level = first_comp.get("proficiency_level") or first_comp.get("level")
+    proficiency_level = int(level) if level else 1
+
+    duration = raw.get("duration_hours") or raw.get("duration") or 10
+    learning_format = raw.get("learning_mode") or raw.get("learning_format") or "SELF_PACED"
+    provider = raw.get("provider_name") or raw.get("provider") or "iGOT Karmayogi — CBC"
+
+    course_url = raw.get("course_url")
+    if not course_url:
+        course_url = f"http://localhost:5174/course/{external_id}"
+
     return OfferingDTO(
-        external_id=str(raw["course_id"]),
-        source="NSSTA" if source == "NSSTA" else "IGOT",
-        title=str(raw["title"]),
-        provider=str(raw["provider"]),
-        competency_code=str(raw["competency"]),
-        proficiency_level=int(raw["proficiency_level"]),
-        duration_hours=int(raw["duration"]),
-        description=str(raw["description"]),
-        learning_format=str(raw["learning_format"]),  # type: ignore[arg-type]
+        external_id=external_id,
+        source="NSSTA" if raw_source == "NSSTA" else "IGOT",
+        title=str(raw.get("title", "")),
+        provider=str(provider),
+        competency_code=str(comp_code),
+        proficiency_level=proficiency_level,
+        duration_hours=int(duration),
+        description=str(raw.get("description", "")),
+        learning_format=str(learning_format),  # type: ignore[arg-type]
         prerequisites=list(raw.get("prerequisites") or []),
-        course_url=raw.get("course_url"),
+        course_url=course_url,
         status=str(raw.get("status", "ACTIVE")),
         session_start=parsed_start,
         seats=raw.get("seats"),
         nominating_authority=raw.get("nominating_authority"),
         venue=raw.get("venue"),
     )
+
 
 
 class MockProvider:
@@ -125,13 +156,28 @@ class MockProvider:
     async def list_courses(
         self, competency: str | None = None, level: int | None = None
     ) -> list[OfferingDTO]:
-        """Both catalogues, merged. Either one failing fails the call."""
+        """Fetch all courses from mock iGOT (D:\igot) or fallback to legacy stubs."""
         params: dict[str, Any] = {"limit": 200}
         if competency:
             params["competency"] = competency
         if level is not None:
             params["level"] = level
 
+        # 1. Primary path: D:\igot API (GET /api/v1/courses)
+        try:
+            body = await self._request("GET", "/api/v1/courses", params=params)
+            courses_data = body.get("data")
+            if isinstance(courses_data, list) and len(courses_data) > 0:
+                return [
+                    _to_offering(r, r.get("source", "IGOT"))
+                    for r in courses_data
+                ]
+        except (NotFoundError, UpstreamUnavailable) as exc:
+            # If not found or service rejected path, fall through to legacy mock endpoints
+            if isinstance(exc, UpstreamUnavailable) and "unreachable" in str(exc):
+                raise
+
+        # 2. Legacy fallback: /igot/v1/courses and /nssta/v1/programmes
         igot = await self._request("GET", "/igot/v1/courses", params=params)
         nssta = await self._request("GET", "/nssta/v1/programmes", params=params)
 
@@ -140,7 +186,17 @@ class MockProvider:
         return offerings
 
     async def get_course(self, external_id: str) -> OfferingDTO:
-        """Look the id up in whichever catalogue owns its prefix."""
+        """Fetch a single course by ID or external ID."""
+        # 1. Primary path: D:\igot API (GET /api/v1/courses/{external_id})
+        try:
+            body = await self._request("GET", f"/api/v1/courses/{external_id}")
+            course_data = body.get("data")
+            if isinstance(course_data, dict):
+                return _to_offering(course_data, course_data.get("source", "IGOT"))
+        except NotFoundError:
+            pass
+
+        # 2. Legacy fallback
         if external_id.upper().startswith("NSSTA"):
             body = await self._request("GET", f"/nssta/v1/programmes/{external_id}")
             return _to_offering(body["result"], "NSSTA")
@@ -148,7 +204,26 @@ class MockProvider:
         return _to_offering(body["result"], "IGOT")
 
     async def enroll(self, user_ref: str, external_id: str) -> EnrollmentDTO:
-        """The iGOT path: self-enrolment, immediate."""
+        """The iGOT path: self-enrolment in mock iGOT platform."""
+        # 1. Primary path: D:\igot API (POST /api/v1/courses/{external_id}/enroll)
+        try:
+            body = await self._request(
+                "POST",
+                f"/api/v1/courses/{external_id}/enroll",
+                json={"user_ref": user_ref},
+            )
+            data = body.get("data") or body.get("result") or {}
+            ext_ref = data.get("external_ref") or data.get("enrollment_id")
+            if ext_ref:
+                return EnrollmentDTO(
+                    external_ref=str(ext_ref),
+                    external_id=external_id,
+                    status=str(data.get("status", "ENROLLED")),
+                )
+        except NotFoundError:
+            pass
+
+        # 2. Legacy fallback: POST /igot/v1/enrollments
         body = await self._request(
             "POST",
             "/igot/v1/enrollments",
@@ -165,6 +240,26 @@ class MockProvider:
         self, user_ref: str, external_id: str, justification: str
     ) -> NominationDTO:
         """The NSSTA path: a request that a controlling authority must act on."""
+        # In D:\igot, all courses can be registered/enrolled
+        try:
+            body = await self._request(
+                "POST",
+                f"/api/v1/courses/{external_id}/enroll",
+                json={"user_ref": user_ref},
+            )
+            data = body.get("data") or body.get("result") or {}
+            ext_ref = data.get("external_ref") or data.get("enrollment_id")
+            if ext_ref:
+                return NominationDTO(
+                    external_ref=str(ext_ref),
+                    external_id=external_id,
+                    status="NOMINATION_REQUESTED",
+                    nominating_authority="NSSTA Training Academy",
+                )
+        except NotFoundError:
+            pass
+
+        # Legacy fallback
         body = await self._request(
             "POST",
             "/nssta/v1/nominations",
@@ -185,13 +280,16 @@ class MockProvider:
     async def health(self) -> bool:
         try:
             async with self._client() as client:
-                resp = await client.get("/meta/health")
+                resp = await client.get("/health")
+                if resp.status_code != 200:
+                    resp = await client.get("/meta/health")
             ok = resp.status_code == 200
             _breaker.record_success() if ok else _breaker.record_failure()
             return ok
         except httpx.HTTPError:
             _breaker.record_failure()
             return False
+
 
     def info(self) -> ProviderInfo:
         return ProviderInfo(
