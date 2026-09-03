@@ -457,14 +457,56 @@ export function useTerminateInitialAssessment() {
   })
 }
 
+export interface UserAccountItem {
+  id: string
+  full_name: string
+  email: string
+  employee_code?: string | null
+  designation?: string | null
+  department?: string | null
+  station?: string | null
+  cadre?: string | null
+  roles: string[]
+  blocked_until?: string | null
+  is_blocked: boolean
+  initial_assessment_completed: boolean
+  created_at?: string | null
+}
+
 export function useBlockedAccounts() {
   return useQuery({
     queryKey: ['blockedAccounts'],
     queryFn: async () => {
-      const { data } = await api.get<{ id: string; full_name: string; email: string; blocked_until: string }[]>(
+      const { data } = await api.get<{ id: string; full_name: string; email: string; employee_code?: string; designation?: string; cadre?: string; blocked_until: string }[]>(
         API.v1('/profiles/all/blocked')
       )
       return data
+    },
+  })
+}
+
+export function useAllAccounts() {
+  return useQuery({
+    queryKey: ['allAccounts'],
+    queryFn: async () => {
+      const { data } = await api.get<UserAccountItem[]>(API.v1('/profiles/all'))
+      return data
+    },
+  })
+}
+
+export function useBlockUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ userId, hours = 5 }: { userId: string; hours?: number }) => {
+      const { data } = await api.post<{ status: string; message: string; blocked_until: string }>(
+        API.v1(`/profiles/${userId}/block?hours=${hours}`)
+      )
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['blockedAccounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['allAccounts'] })
     },
   })
 }
@@ -480,6 +522,8 @@ export function useUnblockUser() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['blockedAccounts'] })
+      void queryClient.invalidateQueries({ queryKey: ['allAccounts'] })
     },
   })
 }
+

@@ -102,7 +102,7 @@ function RequireInitialAssessment({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, isAdmin } = useAuth()
 
   if (loading) {
     return (
@@ -111,6 +111,8 @@ export default function App() {
       </div>
     )
   }
+
+  const defaultHome = isAdmin ? '/admin' : '/'
 
   return (
     <Routes>
@@ -122,7 +124,7 @@ export default function App() {
       {!user && <Route path="/" element={<LandingPage />} />}
 
       {/* Direct Login Page */}
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={defaultHome} replace /> : <Login />} />
 
       {/* Onboarding wizard — only for officers who have not been through it */}
       <Route
@@ -144,19 +146,40 @@ export default function App() {
         }
       />
 
-      {/* Authenticated Officer Portal */}
+      {/* Authenticated Portal */}
       <Route
         path="/*"
         element={
           <RequireRole>
             <Shell>
               <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/competencies" element={<MyCompetencies />} />
-                <Route path="/recommendations" element={<Recommendations />} />
-                <Route path="/courses/:courseId" element={<CourseDetail />} />
-                <Route path="/assessments" element={<Assessments />} />
-                <Route path="/assistant" element={<Assistant />} />
+                {/* Learner routes - disabled for admin */}
+                <Route
+                  path="/"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <Dashboard />}
+                />
+                <Route
+                  path="/competencies"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <MyCompetencies />}
+                />
+                <Route
+                  path="/recommendations"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <Recommendations />}
+                />
+                <Route
+                  path="/courses/:courseId"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <CourseDetail />}
+                />
+                <Route
+                  path="/assessments"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <Assessments />}
+                />
+                <Route
+                  path="/assistant"
+                  element={isAdmin ? <Navigate to="/admin" replace /> : <Assistant />}
+                />
+
+                {/* Shared & Admin Governance routes */}
                 <Route path="/architecture" element={<Architecture />} />
                 <Route
                   path="/trainer"
@@ -174,7 +197,15 @@ export default function App() {
                     </RequireRole>
                   }
                 />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route
+                  path="/admin/analytics"
+                  element={
+                    <RequireRole role="admin">
+                      <AdminDashboard defaultTab="analytics" />
+                    </RequireRole>
+                  }
+                />
+                <Route path="*" element={<Navigate to={defaultHome} replace />} />
               </Routes>
             </Shell>
           </RequireRole>

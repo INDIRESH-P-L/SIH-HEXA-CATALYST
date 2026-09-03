@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -70,6 +70,88 @@ async def update_me(
 
 
 @router.get(
+    "/all/blocked",
+    summary="List all currently blocked accounts (admin only)",
+)
+async def get_blocked_accounts(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _actor: Annotated[CurrentUser, Depends(require_role("admin"))],
+) -> list[dict]:
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    from app.models.user import AuthUser
+
+    now = datetime.now(timezone.utc)
+    stmt = (
+        select(Profile, AuthUser.email)
+        .outerjoin(AuthUser, Profile.id == AuthUser.id)
+        .where(Profile.blocked_until > now)
+        .order_by(Profile.blocked_until.desc())
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    return [
+        {
+            "id": str(p.id),
+            "full_name": p.full_name,
+            "email": email or p.employee_code or "N/A",
+            "employee_code": p.employee_code,
+            "designation": p.designation,
+            "cadre": p.cadre,
+            "blocked_until": p.blocked_until.isoformat() if p.blocked_until else None,
+        }
+        for p, email in rows
+    ]
+
+
+@router.get(
+    "/all",
+    summary="List all user accounts for admin management (admin only)",
+)
+async def get_all_accounts(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _actor: Annotated[CurrentUser, Depends(require_role("admin"))],
+) -> list[dict]:
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    from app.models.user import AuthUser, UserRole
+
+    now = datetime.now(timezone.utc)
+    stmt = (
+        select(Profile, AuthUser.email)
+        .outerjoin(AuthUser, Profile.id == AuthUser.id)
+        .order_by(Profile.created_at.desc())
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    accounts = []
+    for p, auth_email in rows:
+        roles_stmt = select(UserRole.role).where(UserRole.user_id == p.id)
+        roles_res = await session.execute(roles_stmt)
+        user_roles = roles_res.scalars().all()
+
+        is_blocked = bool(p.blocked_until and p.blocked_until > now)
+        accounts.append({
+            "id": str(p.id),
+            "full_name": p.full_name,
+            "email": auth_email or p.employee_code or "N/A",
+            "employee_code": p.employee_code,
+            "designation": p.designation,
+            "department": p.department,
+            "station": p.station,
+            "cadre": p.cadre,
+            "roles": list(user_roles) if user_roles else ["employee"],
+            "blocked_until": p.blocked_until.isoformat() if p.blocked_until else None,
+            "is_blocked": is_blocked,
+            "initial_assessment_completed": p.initial_assessment_completed,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    return accounts
+
+
+@router.get(
     "/{user_id}",
     response_model=ProfileRead,
     summary="Read another officer's profile (trainer or admin)",
@@ -109,28 +191,39 @@ async def unblock_user(
     await session.commit()
     return {"status": "success", "message": "Account has been unblocked"}
 
-@router.get(
-    "/all/blocked",
-    summary="List all currently blocked accounts (admin only)",
+
+@router.post(
+    "/{user_id}/block",
+    summary="Block an officer's account (admin only)",
 )
-async def get_blocked_accounts(
+async def block_user(
+    user_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
     _actor: Annotated[CurrentUser, Depends(require_role("admin"))],
-) -> list[dict]:
-    from sqlalchemy import select
-    from datetime import datetime, timezone
+    hours: int = 5,
+) -> dict[str, Any]:
+    from datetime import datetime, timezone, timedelta
+    profile = await session.get(Profile, user_id)
+    if profile is None:
+        raise NotFoundError("Profile not found.")
+
     now = datetime.now(timezone.utc)
-    stmt = select(Profile).where(Profile.blocked_until > now)
-    result = await session.execute(stmt)
-    profiles = result.scalars().all()
-    
-    return [
-        {
-            "id": str(p.id),
-            "full_name": p.full_name,
-            "email": p.employee_code,
-            "blocked_until": p.blocked_until.isoformat() if p.blocked_until else None,
-        }
-        for p in profiles
-    ]
+    profile.blocked_until = now + timedelta(hours=hours)
+    session.add(
+        ActivityLog(
+            user_id=_actor.id,
+            action="profile.blocked",
+            entity="profile",
+            entity_id=user_id,
+            extra={"hours": hours, "by_admin": True},
+        )
+    )
+    await session.commit()
+    return {
+        "status": "success",
+        "message": f"Account has been blocked for {hours} hours",
+        "blocked_until": profile.blocked_until.isoformat(),
+    }
+
+
 
