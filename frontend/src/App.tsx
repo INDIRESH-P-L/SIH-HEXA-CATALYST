@@ -6,7 +6,6 @@ import { useAuth } from './lib/auth'
 import { needsInitialAssessment, needsOnboarding } from './lib/onboarding'
 
 import AdminDashboard from './pages/AdminDashboard'
-import Architecture from './pages/Architecture'
 import Assessments from './pages/Assessments'
 import Assistant from './pages/Assistant'
 import CourseDetail from './pages/CourseDetail'
@@ -102,7 +101,7 @@ function RequireInitialAssessment({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { user, loading, isAdmin } = useAuth()
+  const { user, loading, isAdmin, isTrainer } = useAuth()
 
   if (loading) {
     return (
@@ -112,7 +111,8 @@ export default function App() {
     )
   }
 
-  const defaultHome = isAdmin ? '/admin' : '/'
+  const defaultHome = isAdmin ? '/admin' : isTrainer ? '/trainer' : '/'
+  const isOfficer = !isAdmin && !isTrainer
 
   return (
     <Routes>
@@ -153,34 +153,34 @@ export default function App() {
           <RequireRole>
             <Shell>
               <Routes>
-                {/* Learner routes - disabled for admin */}
+                {/* Learner routes - disabled for admin & trainer */}
                 <Route
                   path="/"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <Dashboard />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <Dashboard />}
                 />
                 <Route
                   path="/competencies"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <MyCompetencies />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <MyCompetencies />}
                 />
                 <Route
                   path="/recommendations"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <Recommendations />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <Recommendations />}
                 />
                 <Route
                   path="/courses/:courseId"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <CourseDetail />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <CourseDetail />}
                 />
                 <Route
                   path="/assessments"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <Assessments />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <Assessments />}
                 />
                 <Route
                   path="/assistant"
-                  element={isAdmin ? <Navigate to="/admin" replace /> : <Assistant />}
+                  element={!isOfficer ? <Navigate to={defaultHome} replace /> : <Assistant />}
                 />
 
                 {/* Shared & Admin Governance routes */}
-                <Route path="/architecture" element={<Architecture />} />
+                <Route path="/architecture" element={<Navigate to={defaultHome} replace />} />
                 <Route
                   path="/trainer"
                   element={

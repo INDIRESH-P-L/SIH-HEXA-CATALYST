@@ -9,7 +9,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  Network,
   Search,
   Shield,
   Target,
@@ -47,10 +46,8 @@ const OFFICER_NAV: NavGroup[] = [
     ],
   },
   {
-    label: 'Academy & Governance',
+    label: 'Public Portal',
     items: [
-      { to: '/trainer', label: 'Trainer Studio', subtitle: 'MCQ generator & gate', icon: Upload, requires: 'trainer' },
-      { to: '/architecture', label: 'Architecture & Graph', subtitle: 'FRAC 2026.1 sealed', icon: Network },
       { to: '/portal', label: 'Karmayogi Public Portal', subtitle: 'Landing & stats', icon: Home },
     ],
   },
@@ -62,7 +59,16 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: '/admin', label: 'Account Management', subtitle: 'Manage accounts & unblock', icon: Users },
       { to: '/admin/analytics', label: 'Workforce Analytics', subtitle: 'Marts & k-anonymity', icon: BarChart3 },
-      { to: '/architecture', label: 'Architecture & Graph', subtitle: 'FRAC 2026.1 sealed', icon: Network },
+      { to: '/portal', label: 'Karmayogi Public Portal', subtitle: 'Landing & stats', icon: Home },
+    ],
+  },
+]
+
+const TRAINER_NAV: NavGroup[] = [
+  {
+    label: 'Trainer Academy',
+    items: [
+      { to: '/trainer', label: 'Trainer Studio', subtitle: 'MCQ generator & gate', icon: Upload },
       { to: '/portal', label: 'Karmayogi Public Portal', subtitle: 'Landing & stats', icon: Home },
     ],
   },
@@ -73,6 +79,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
   const visible = isAdmin
     ? ADMIN_NAV
+    : isTrainer
+    ? TRAINER_NAV
     : OFFICER_NAV.map((group) => ({
         ...group,
         items: group.items.filter((item) => {
@@ -94,7 +102,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                 <li key={to}>
                   <NavLink
                     to={to}
-                    end={to === '/' || to === '/admin'}
+                    end={to === '/' || to === '/admin' || to === '/trainer'}
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       `group relative flex items-center justify-between rounded-xl px-3 py-2.5 transition-all ${
@@ -172,6 +180,25 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
               <span className="font-bold text-[#0B3060]">ACCOUNT_MGMT</span>
             </div>
           </div>
+        ) : isTrainer ? (
+          <div className="mt-6 rounded-xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50/40 p-3.5 shadow-xs">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Upload size={13} className="text-amber-700" />
+              <span className="text-10 font-bold uppercase tracking-wider text-[#0B3060]">
+                Academy Trainer
+              </span>
+            </div>
+            <div className="text-12 font-bold text-slate-900 truncate">
+              {user.profile.full_name}
+            </div>
+            <div className="text-11 font-semibold text-amber-900 truncate">
+              NSSTA Training Academy
+            </div>
+            <div className="mt-2 pt-2 border-t border-amber-200 flex items-center justify-between text-10 text-slate-600 font-mono">
+              <span>Studio Access:</span>
+              <span className="font-bold text-[#0B3060]">MCQ_GATEWAY</span>
+            </div>
+          </div>
         ) : (
           <div className="mt-6 rounded-xl border border-amber-200 bg-gradient-to-br from-[#FFF9F2] to-white p-3.5 shadow-xs">
             <div className="flex items-center gap-2 mb-1.5">
@@ -198,7 +225,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { user, signOut, isAdmin } = useAuth()
+  const { user, signOut, isAdmin, isTrainer } = useAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
 
@@ -223,7 +250,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             {drawerOpen ? <X size={20} strokeWidth={1.5} /> : <Menu size={20} strokeWidth={1.5} />}
           </button>
 
-          <Link to={isAdmin ? "/admin" : "/"} className="flex items-center gap-3 group shrink-0">
+          <Link
+            to={isAdmin ? "/admin" : isTrainer ? "/trainer" : "/"}
+            className="flex items-center gap-3 group shrink-0"
+          >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B3060] to-[#154399] text-white shadow-xs">
               <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current" aria-hidden="true">
                 <path d="M12 2L14.5 8.5L21.5 9.5L16.5 14.5L18 21.5L12 18L6 21.5L7.5 14.5L2.5 9.5L9.5 8.5L12 2Z" fill="#F58220" />
@@ -235,7 +265,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-2">
                 <span className="text-15 font-extrabold tracking-tight text-[#0B3060] whitespace-nowrap">कर्मयोगी भारत</span>
                 <span className="hidden sm:inline-block text-10 font-bold text-[#D96B0B] bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 uppercase tracking-wide whitespace-nowrap">
-                  {isAdmin ? 'ADMIN CONSOLE' : 'iGOT MoSPI'}
+                  {isAdmin ? 'ADMIN CONSOLE' : isTrainer ? 'TRAINER STUDIO' : 'iGOT MoSPI'}
                 </span>
               </div>
               <p className="hidden md:block text-10 font-medium text-slate-500 whitespace-nowrap">
@@ -252,7 +282,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <input
               type="text"
               readOnly
-              placeholder={isAdmin ? "Search user accounts, official emails, blocked statuses..." : "Search FRAC competencies, accredited iGOT courses, questions..."}
+              placeholder={
+                isAdmin
+                  ? "Search user accounts, official emails, blocked statuses..."
+                  : isTrainer
+                  ? "Search training materials, generated MCQs, competencies..."
+                  : "Search FRAC competencies, accredited iGOT courses, questions..."
+              }
               className="w-full rounded-full border border-slate-200 bg-slate-50/80 py-1.5 pl-10 pr-4 text-12 text-slate-700 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0F54B9]/20"
             />
           </div>
@@ -275,7 +311,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <div className="hidden text-left leading-tight sm:block">
                 <p className="text-13 font-bold text-[#0B3060]">{user.profile.full_name}</p>
                 <span className="inline-block text-10 font-semibold text-slate-500 truncate max-w-[150px]">
-                  {isAdmin ? 'System Administrator' : (user.profile.job_role?.title ?? 'Statistical Officer')}
+                  {isAdmin
+                    ? 'System Administrator'
+                    : isTrainer
+                    ? 'Academy Trainer'
+                    : (user.profile.job_role?.title ?? 'Statistical Officer')}
                 </span>
               </div>
             </div>

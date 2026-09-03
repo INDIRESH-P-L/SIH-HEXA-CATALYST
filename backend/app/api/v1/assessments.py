@@ -665,3 +665,15 @@ async def initial_terminate(
         
     return {"status": "terminated", "message": "Account blocked for 5 hours"}
 
+
+@router.post(
+    "/terminate",
+    summary="Terminate an in-progress assessment due to security violation and block account for 5 hours",
+)
+async def assessment_terminate(
+    user: CurrentUserDep,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, str]:
+    return await initial_terminate(user=user, session=session)
+
+

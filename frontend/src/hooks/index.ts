@@ -457,6 +457,22 @@ export function useTerminateInitialAssessment() {
   })
 }
 
+export function useTerminateAssessment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ status: string; message: string }>(
+        API.v1('/assessments/terminate')
+      )
+      return data
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+    },
+  })
+}
+
+
 export interface UserAccountItem {
   id: string
   full_name: string
