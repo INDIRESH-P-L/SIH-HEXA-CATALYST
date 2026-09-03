@@ -55,10 +55,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     void restore()
+
+    const handleUnauthorized = () => {
+      if (!cancelled) {
+        setUser(null)
+        setToken(null)
+      }
+    }
+    window.addEventListener('auth:unauthorized', handleUnauthorized)
+
     return () => {
       cancelled = true
+      window.removeEventListener('auth:unauthorized', handleUnauthorized)
     }
   }, [])
+
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { data } = await api.post<TokenResponse>(API.v1('/auth/login'), {

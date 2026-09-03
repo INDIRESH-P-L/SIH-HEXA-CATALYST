@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import {
+  AlertCircle,
   BarChart3,
   CheckCircle2,
   Clock,
@@ -28,6 +29,8 @@ import {
   StatTile,
   type Column,
 } from '../components/common'
+import { errorMessage } from '../lib/api'
+
 import {
   useAdminOverview,
   useAllAccounts,
@@ -243,6 +246,29 @@ export default function AdminDashboard({ defaultTab = 'accounts' }: AdminDashboa
         }
       />
 
+      {/* Error Alert Banner when accounts query fails */}
+      {accountsQuery.isError && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 shadow-xs">
+          <AlertCircle size={20} className="text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-12">
+            <p className="font-bold text-red-900">Failed to fetch accounts from database</p>
+            <p className="mt-0.5 text-red-700">
+              {errorMessage(
+                accountsQuery.error,
+                'Could not load official user accounts. Please verify your connection or session.',
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void accountsQuery.refetch()}
+            className="rounded-lg bg-red-600 px-3 py-1 text-11 font-bold text-white hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Top Primary Navigation Tabs */}
       <div className="mb-6 flex border-b border-slate-200 bg-white px-4 rounded-xl shadow-2xs">
         <button
@@ -447,6 +473,22 @@ export default function AdminDashboard({ defaultTab = 'accounts' }: AdminDashboa
             {accountsQuery.isLoading ? (
               <div className="py-8">
                 <Skeleton className="h-48 w-full" />
+              </div>
+            ) : accountsQuery.isError ? (
+              <div className="py-12 text-center">
+                <AlertCircle size={32} className="mx-auto text-red-400 mb-2" />
+                <p className="text-13 font-bold text-red-800">Unable to load official accounts</p>
+                <p className="text-11 text-red-600 mt-1">
+                  {errorMessage(accountsQuery.error, 'An error occurred while communicating with the database.')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void accountsQuery.refetch()}
+                  className="mt-3 inline-flex items-center gap-1 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-11 font-bold text-red-700 hover:bg-red-50 transition-colors"
+                >
+                  <RefreshCw size={12} />
+                  <span>Try Again</span>
+                </button>
               </div>
             ) : filteredAccounts.length === 0 ? (
               <div className="py-12 text-center">

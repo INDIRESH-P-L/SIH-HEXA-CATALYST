@@ -126,12 +126,15 @@ async def get_all_accounts(
     result = await session.execute(stmt)
     rows = result.all()
 
+    roles_stmt = select(UserRole.user_id, UserRole.role)
+    roles_res = await session.execute(roles_stmt)
+    roles_by_user: dict[uuid.UUID, list[str]] = {}
+    for uid, role in roles_res.all():
+        roles_by_user.setdefault(uid, []).append(role)
+
     accounts = []
     for p, auth_email in rows:
-        roles_stmt = select(UserRole.role).where(UserRole.user_id == p.id)
-        roles_res = await session.execute(roles_stmt)
-        user_roles = roles_res.scalars().all()
-
+        user_roles = roles_by_user.get(p.id, ["employee"])
         is_blocked = bool(p.blocked_until and p.blocked_until > now)
         accounts.append({
             "id": str(p.id),
@@ -149,6 +152,7 @@ async def get_all_accounts(
             "created_at": p.created_at.isoformat() if p.created_at else None,
         })
     return accounts
+
 
 
 @router.get(

@@ -39,6 +39,17 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      setToken(null)
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+    }
+    return Promise.reject(error)
+  },
+)
+
 /** The error shape the backend returns for every deliberate failure. */
 export interface ApiErrorBody {
   code?: string
